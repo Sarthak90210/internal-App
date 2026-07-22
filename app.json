@@ -8,9 +8,12 @@
     "scheme": "app",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.teamrotor.app",
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.teamrotor.app",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -25,6 +28,7 @@
     },
     "plugins": [
       "expo-router",
+      "@react-native-google-signin/google-signin",
       [
         "expo-splash-screen",
         {
