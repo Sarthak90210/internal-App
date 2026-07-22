@@ -1,9 +1,22 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { View, FlatList, StyleSheet, Alert, TouchableOpacity } from 'react-native';
-import { Searchbar, FAB, List, useTheme, Text, ActivityIndicator, Button, Checkbox, IconButton, Badge } from 'react-native-paper';
+import { Searchbar, List, useTheme, Text, ActivityIndicator, Button, Checkbox, IconButton, Portal, Dialog, TextInput, FAB } from 'react-native-paper';
 import { InventoryService } from '../../services/inventory';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAuthStore } from '../../stores/authStore';
+import MoveDestinationModal from '../../components/MoveDestinationModal';
+import ExportModal from '../../components/ExportModal';
+
+const getRelativeTime = (timestamp) => {
+  if (!timestamp) return '';
+  const seconds = timestamp.seconds || (new Date(timestamp).getTime() / 1000);
+  const diff = Math.floor(Date.now() / 1000 - seconds);
+  if (diff < 60) return 'Just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
+  return `${Math.floor(diff / 604800)}w`;
+};
 
 export default function InventoryDetailScreen({ route, navigation }) {
   const theme = useTheme();
@@ -11,11 +24,18 @@ export default function InventoryDetailScreen({ route, navigation }) {
   const [inventories, setInventories] = useState([]);
   const [allItems, setAllItems] = useState([]);
   const [allInvs, setAllInvs] = useState([]);
+  const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedInventories, setSelectedInventories] = useState(new Set());
+
+  const [isAddDialogVisible, setIsAddDialogVisible] = useState(false);
+  const [newInventoryName, setNewInventoryName] = useState('');
+  
+  const [isMoveModalVisible, setIsMoveModalVisible] = useState(false);
+  const [isExportModalVisible, setIsExportModalVisible] = useState(false);
 
   useEffect(() => {
     navigation.setOptions({ title: listName || 'Inventories' });
@@ -26,11 +46,14 @@ export default function InventoryDetailScreen({ route, navigation }) {
     
     // Subscribe to all inventories and items to calculate descendants effectively
     const unsubscribeAllInvs = InventoryService.subscribeToAllInventories((data) => setAllInvs(data));
-    InventoryService.getAllItems().then(data => setAllItems(data));
+    const unsubscribeLists = InventoryService.subscribeToLists((data) => setLists(data));
+    const unsubscribeAllItems = InventoryService.subscribeToAllItems((data) => setAllItems(data));
 
     return () => {
       unsubscribeList();
       unsubscribeAllInvs();
+      unsubscribeLists();
+      unsubscribeAllItems();
     };
   }, [listId, listName, navigation]);
 
@@ -74,6 +97,23 @@ export default function InventoryDetailScreen({ route, navigation }) {
     return total;
   };
 
+  const handleAddInventory = async () => {
+    if (!newInventoryName.trim()) return;
+    try {
+      await InventoryService.addInventory(listId, newInventoryName.trim());
+      setIsAddDialogVisible(false);
+      setNewInventoryName('');
+    } catch (e) {
+      Alert.alert('Error', 'Failed to create inventory');
+    }
+  };
+
+  const getStatusStyle = (status) => {
+    if (status === 'Available') return { bg: theme.colors.primaryContainer, color: theme.colors.onPrimaryContainer };
+    if (status === 'Missing') return { bg: '#FFF3E0', color: '#E65100' };
+    return { bg: theme.colors.errorContainer, color: theme.colors.onErrorContainer };
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       
@@ -81,7 +121,7 @@ export default function InventoryDetailScreen({ route, navigation }) {
         <Button 
           icon="download" 
           mode="text" 
-          onPress={() => Alert.alert('Export', 'Export functionality requires file saving configuration.')}
+          onPress={() => setIsExportModalVisible(true)}
         >
           Export
         </Button>
@@ -94,9 +134,6 @@ export default function InventoryDetailScreen({ route, navigation }) {
           }}
         >
           {isSelectionMode ? (selectedInventories.size === filtered.length && filtered.length > 0 ? 'Deselect All' : 'Select All') : 'Select'}
-        </Button>
-        <Button icon="plus" mode="text" onPress={() => console.log('New Inventory')}>
-          New
         </Button>
         {isSelectionMode && (
           <IconButton icon="close" size={20} onPress={() => { setIsSelectionMode(false); setSelectedInventories(new Set()); }} />
@@ -122,6 +159,7 @@ export default function InventoryDetailScreen({ route, navigation }) {
             const status = item.status || (item.currentHolder ? 'CheckedOut' : 'Available');
             const holder = item.currentHolder || 'None';
             const isSelected = selectedInventories.has(item.id);
+            const statusStyle = getStatusStyle(status);
 
             return (
               <TouchableOpacity 
@@ -146,8 +184,8 @@ export default function InventoryDetailScreen({ route, navigation }) {
                     </View>
                   )}
                   <Text variant="titleMedium" style={{ flex: 1, fontWeight: 'bold' }}>{item.name || 'Unnamed Inventory'}</Text>
-                  <View style={[styles.badge, { backgroundColor: status === 'Available' ? theme.colors.primaryContainer : theme.colors.errorContainer }]}>
-                    <Text style={{ fontSize: 10, color: status === 'Available' ? theme.colors.onPrimaryContainer : theme.colors.onErrorContainer }}>{status}</Text>
+                  <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
+                    <Text style={{ fontSize: 10, color: statusStyle.color }}>{status}</Text>
                   </View>
                 </View>
                 
@@ -159,6 +197,12 @@ export default function InventoryDetailScreen({ route, navigation }) {
                   <View style={styles.metaItem}>
                     <MaterialCommunityIcons name="package-variant-closed" size={14} color={theme.colors.onSurfaceVariant} />
                     <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginLeft: 4 }}>{count}</Text>
+                  </View>
+                  <View style={styles.metaItem}>
+                    <MaterialCommunityIcons name="clock-outline" size={14} color={theme.colors.onSurfaceVariant} />
+                    <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginLeft: 4 }}>
+                      {getRelativeTime(item.createdAt)}
+                    </Text>
                   </View>
                 </View>
               </TouchableOpacity>
@@ -175,9 +219,66 @@ export default function InventoryDetailScreen({ route, navigation }) {
       {isSelectionMode && selectedInventories.size > 0 && (
         <View style={[styles.bulkAction, { backgroundColor: theme.colors.elevation.level3 }]}>
           <Text>{selectedInventories.size} selected</Text>
-          <Button mode="contained" onPress={() => console.log('Bulk Move')}>Move</Button>
+          <Button mode="contained" onPress={() => setIsMoveModalVisible(true)}>Move</Button>
         </View>
       )}
+
+      <MoveDestinationModal
+        visible={isMoveModalVisible}
+        onDismiss={() => setIsMoveModalVisible(false)}
+        lists={lists}
+        inventories={allInvs}
+        allowedTypes={['list', 'inventory']}
+        invalidTargets={Array.from(selectedInventories).map(id => `inventory:${id}`)}
+        onConfirm={async (dest) => {
+          setIsMoveModalVisible(false);
+          try {
+            await Promise.all(
+              Array.from(selectedInventories).map(invId => 
+                InventoryService.moveInventory(invId, dest, allInvs)
+              )
+            );
+            setIsSelectionMode(false);
+            setSelectedInventories(new Set());
+          } catch (e) {
+            alert('Failed to move');
+          }
+        }}
+      />
+
+      <ExportModal 
+        visible={isExportModalVisible} 
+        onDismiss={() => setIsExportModalVisible(false)} 
+        listId={listId} 
+      />
+
+      {!isSelectionMode && (
+        <FAB
+          icon="plus"
+          style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+          color={theme.colors.onPrimary}
+          onPress={() => setIsAddDialogVisible(true)}
+        />
+      )}
+
+      <Portal>
+        <Dialog visible={isAddDialogVisible} onDismiss={() => setIsAddDialogVisible(false)}>
+          <Dialog.Title>New Inventory</Dialog.Title>
+          <Dialog.Content>
+            <TextInput
+              label="Inventory Name"
+              value={newInventoryName}
+              onChangeText={setNewInventoryName}
+              mode="outlined"
+              autoFocus
+            />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setIsAddDialogVisible(false)}>Cancel</Button>
+            <Button onPress={handleAddInventory} disabled={!newInventoryName.trim()}>Create</Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
     </View>
   );
 }
@@ -191,5 +292,6 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 },
   cardMeta: { flexDirection: 'row', gap: 16 },
   metaItem: { flexDirection: 'row', alignItems: 'center' },
-  bulkAction: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', elevation: 4 }
+  bulkAction: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', elevation: 4 },
+  fab: { position: 'absolute', margin: 16, right: 0, bottom: 0, borderRadius: 16 }
 });

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, FlatList, StyleSheet, Alert, Modal, ScrollView, Image } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, useTheme, Card, Button, IconButton, Searchbar, TextInput, Divider, FAB } from 'react-native-paper';
 import { UsersService } from '../../services/users';
 import { useAuthStore } from '../../stores/authStore';
@@ -162,8 +163,8 @@ export default function ManageTeamMembersScreen() {
         onPress={openAddModal}
       />
 
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalVisible(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
           <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface }]}>
             <IconButton icon="close" onPress={() => setModalVisible(false)} />
             <Text variant="titleLarge">{editingEmail === '__new__' ? 'Add Member' : 'Edit Member'}</Text>
@@ -224,7 +225,7 @@ export default function ManageTeamMembersScreen() {
               Upload Image
             </Button>
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </Modal>
     </View>
   );

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, FlatList, StyleSheet, Alert, Modal, ScrollView, Image } from 'react-native';
 import { List, FAB, useTheme, ActivityIndicator, Text, Button, TextInput, Switch, IconButton, Divider } from 'react-native-paper';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { GalleryService } from '../../services/gallery';
 import { useAuthStore } from '../../stores/authStore';
@@ -209,8 +210,8 @@ export default function ManageGalleryScreen() {
         onPress={openAddModal}
       />
 
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalVisible(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
           <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface }]}>
             <IconButton icon="close" onPress={() => setModalVisible(false)} />
             <Text variant="titleLarge">{editingId ? 'Edit Image' : 'Add Image'}</Text>
@@ -236,11 +237,11 @@ export default function ManageGalleryScreen() {
               {formData.img ? 'Change Image' : 'Upload Image'}
             </Button>
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </Modal>
 
-      <Modal visible={settingsModalVisible} animationType="slide" presentationStyle="pageSheet">
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <Modal visible={settingsModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setSettingsModalVisible(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
           <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface }]}>
             <IconButton icon="close" onPress={() => setSettingsModalVisible(false)} />
             <Text variant="titleLarge">Gallery Hero Image</Text>
@@ -255,7 +256,7 @@ export default function ManageGalleryScreen() {
               Upload Hero Image
             </Button>
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </Modal>
     </View>
   );

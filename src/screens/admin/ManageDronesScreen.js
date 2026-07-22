@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, FlatList, StyleSheet, Alert, Modal, ScrollView, Image } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { List, FAB, useTheme, ActivityIndicator, Text, Button, TextInput, Switch, IconButton, Divider } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import { DronesService } from '../../services/drones';
@@ -165,8 +166,8 @@ export default function ManageDronesScreen() {
         onPress={openAddModal}
       />
 
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalVisible(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
           <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface }]}>
             <IconButton icon="close" onPress={() => setModalVisible(false)} />
             <Text variant="titleLarge">{editingId ? 'Edit Drone' : 'Add Drone'}</Text>
@@ -234,7 +235,7 @@ export default function ManageDronesScreen() {
               {formData.image ? 'Change Image' : 'Upload Image'}
             </Button>
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </Modal>
     </View>
   );

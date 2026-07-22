@@ -33,9 +33,15 @@ export async function uploadFile(fileUri, folder) {
   // Get filename from URI
   const filename = fileUri.split('/').pop();
   
-  // Infer type
+  // Infer type based on extension
   const match = /\.(\w+)$/.exec(filename);
-  const type = match ? `image/${match[1]}` : `image`;
+  const ext = match ? match[1].toLowerCase() : '';
+  let type = 'image/jpeg';
+  if (['mp4', 'mov', 'webm'].includes(ext)) {
+    type = `video/${ext === 'mov' ? 'quicktime' : ext}`;
+  } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
+    type = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+  }
 
   form.append('image', {
     uri: fileUri,

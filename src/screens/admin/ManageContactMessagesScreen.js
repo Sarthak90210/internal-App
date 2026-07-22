@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, FlatList, StyleSheet, Alert, Linking } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, useTheme, Card, Button, IconButton, Searchbar, SegmentedButtons } from 'react-native-paper';
 import { MessagesService } from '../../services/messages';
 import { useAuthStore } from '../../stores/authStore';

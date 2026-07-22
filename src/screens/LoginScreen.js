@@ -4,25 +4,27 @@ import { Button, Text, ActivityIndicator, useTheme } from 'react-native-paper';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { AuthService } from '../services/auth';
 
+GoogleSignin.configure({
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '361893112217-i97p3ab2bd28rku8k5g6sish7u8018de.apps.googleusercontent.com',
+  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '361893112217-r4kaaeo8rhjl9nmf26de863kcn5bt606.apps.googleusercontent.com',
+});
+
 export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const theme = useTheme();
 
-  useEffect(() => {
-    // Configure GoogleSignin when the component mounts
-    GoogleSignin.configure({
-      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-      iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-      // You can add additional scopes if needed
-      // scopes: ['profile', 'email'], 
-    });
-  }, []);
-
   const handleGoogleLogin = async () => {
     setLoading(true);
+    
+    // Safety timeout — if sign-in hangs for 30 seconds, reset the button
+    const timeout = setTimeout(() => {
+      setLoading(false);
+      Alert.alert('Sign In Timeout', 'Google Sign-In took too long. Please try again.');
+    }, 30000);
+
     try {
-      // Check if your device supports Google Play Services
-      await GoogleSignin.hasPlayServices();
+      // Check if your device supports Google Play Services (without showing blocking dialog)
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: false });
       
       // Perform the sign in
       await GoogleSignin.signIn();
@@ -49,6 +51,8 @@ export default function LoginScreen() {
         // some other error happened
         Alert.alert('Login Failed', error.message);
       }
+    } finally {
+      clearTimeout(timeout);
       setLoading(false);
     }
   };

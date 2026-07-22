@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { View, FlatList, StyleSheet, Alert, Modal, ScrollView, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { List, FAB, useTheme, ActivityIndicator, Text, Button, TextInput, Switch, IconButton, Divider, Searchbar, Checkbox } from 'react-native-paper';
 import { TeamService } from '../../services/team';
 import { useAuthStore } from '../../stores/authStore';
@@ -170,8 +171,8 @@ export default function ManageTeamScreen() {
       />
 
       {/* Main Add/Edit Modal */}
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalVisible(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
           <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface }]}>
             <IconButton icon="close" onPress={() => setModalVisible(false)} />
             <Text variant="titleLarge">{editingId ? 'Edit Member' : 'Add Member'}</Text>
@@ -216,7 +217,7 @@ export default function ManageTeamScreen() {
               <Switch value={formData.isActive} onValueChange={v => setFormData({...formData, isActive: v})} />
             </View>
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </Modal>
 
     </View>

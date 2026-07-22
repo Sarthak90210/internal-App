@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { View, FlatList, StyleSheet, Alert, Modal, ScrollView, Image } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { List, FAB, useTheme, ActivityIndicator, Text, Button, TextInput, Switch, IconButton, Divider, Searchbar } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import { AchievementsService } from '../../services/achievements';
@@ -170,8 +171,8 @@ export default function ManageAchievementsScreen() {
         onPress={openAddModal}
       />
 
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalVisible(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
           <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface }]}>
             <IconButton icon="close" onPress={() => setModalVisible(false)} />
             <Text variant="titleLarge">{editingId ? 'Edit Achievement' : 'Add Achievement'}</Text>
@@ -219,7 +220,7 @@ export default function ManageAchievementsScreen() {
               {formData.images && formData.images.length > 0 ? 'Change Image' : 'Upload Image'}
             </Button>
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </Modal>
     </View>
   );

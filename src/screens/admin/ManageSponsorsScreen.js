@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { View, FlatList, StyleSheet, Alert, Modal, ScrollView, Image } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { List, FAB, useTheme, ActivityIndicator, Text, Button, TextInput, Switch, IconButton, Divider, Searchbar } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import { SponsorsService } from '../../services/sponsors';
@@ -236,8 +237,8 @@ export default function ManageSponsorsScreen() {
         onPress={openAddModal}
       />
 
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalVisible(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
           <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface }]}>
             <IconButton icon="close" onPress={() => setModalVisible(false)} />
             <Text variant="titleLarge">{editingId ? 'Edit Sponsor' : 'Add Sponsor'}</Text>
@@ -284,11 +285,11 @@ export default function ManageSponsorsScreen() {
               {formData.logo ? 'Change Logo' : 'Upload Logo'}
             </Button>
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </Modal>
 
-      <Modal visible={settingsModalVisible} animationType="slide" presentationStyle="pageSheet">
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <Modal visible={settingsModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setSettingsModalVisible(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
           <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface }]}>
             <IconButton icon="close" onPress={() => setSettingsModalVisible(false)} />
             <Text variant="titleLarge">Page Settings</Text>
@@ -332,7 +333,7 @@ export default function ManageSponsorsScreen() {
               Upload Brochure
             </Button>
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </Modal>
     </View>
   );
