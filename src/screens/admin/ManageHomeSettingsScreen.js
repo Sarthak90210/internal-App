@@ -6,7 +6,6 @@ import { db } from '../../firebase';
 import { uploadFile, deleteCloudinaryImage, logAdminAction } from '../../services/adminApi';
 import { useAuthStore } from '../../stores/authStore';
 import * as ImagePicker from 'expo-image-picker';
-import { Video, ResizeMode } from 'expo-av';
 
 const EMPTY_SETTINGS = {
   backgroundVideoUrl: '',
@@ -181,22 +180,6 @@ export default function ManageHomeSettingsScreen() {
             />
           </View>
           
-          <Text style={[styles.previewLabel, { color: theme.colors.onSurfaceVariant }]}>
-            Preview ({homeVideoUrl ? 'Custom Video' : 'Default Video'}):
-          </Text>
-          
-          <View style={styles.videoContainer}>
-            <Video
-              source={{ uri: homeVideoUrl || 'https://res.cloudinary.com/dv62h1mno/video/upload/v1703212891/TRFPV_Assets/Teamvideo.mp4' }}
-              style={styles.video}
-              useNativeControls
-              resizeMode={ResizeMode.COVER}
-              isLooping
-              shouldPlay
-              isMuted
-            />
-          </View>
-
           <View style={styles.actionRow}>
             <Button 
               mode="contained" 
@@ -274,20 +257,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginVertical: 12,
     fontWeight: 'bold',
-  },
-  previewLabel: {
-    marginBottom: 8,
-    fontWeight: 'bold',
-  },
-  videoContainer: {
-    height: 200,
-    backgroundColor: '#000',
-    borderRadius: 8,
-    overflow: 'hidden',
-    marginBottom: 16,
-  },
-  video: {
-    flex: 1,
   },
   actionRow: {
     flexDirection: 'row',

@@ -4,10 +4,13 @@ import { deleteCloudinaryImage, logAdminAction } from './adminApi';
 
 export const AchievementsService = {
   subscribeToAchievements: (callback) => {
-    const q = query(collection(db, 'achievements'), orderBy('order', 'asc'));
+    const q = query(collection(db, 'achievements'), orderBy('order', 'desc'));
     return onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       callback(data);
+    }, (error) => {
+      console.error("Error fetching achievements:", error);
+      callback([]);
     });
   },
 

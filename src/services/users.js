@@ -28,5 +28,16 @@ export const UsersService = {
   archiveUser: async (email) => {
     await setDoc(doc(db, 'users', email), { isActive: false, isArchived: true, tags: [] }, { merge: true });
     await logAdminAction('ARCHIVED', 'TeamMember', `Archived team member: ${email}`);
+  },
+
+  subscribeToUser: (email, callback) => {
+    const docRef = doc(db, 'users', email.toLowerCase());
+    return onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        callback({ id: docSnap.id, ...docSnap.data() });
+      } else {
+        callback(null);
+      }
+    });
   }
 };

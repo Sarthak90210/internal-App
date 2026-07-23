@@ -149,13 +149,13 @@ export default function FolderDetailScreen({ route, navigation }) {
     );
   };
 
-  const renderOverview = () => {
-    const getHolderName = (email) => {
-      if (!email) return 'None';
-      const userObj = usersList.find(u => u.email === email);
-      return userObj?.name || email;
-    };
+  const getHolderName = (email) => {
+    if (!email) return 'None';
+    const userObj = usersList.find(u => u.email === email);
+    return userObj?.name || email;
+  };
 
+  const renderOverview = () => {
     const status = currentInventory.status || (currentInventory.currentHolder ? 'CheckedOut' : 'Available');
     const statusColors = getStatusColors(status);
 
@@ -271,7 +271,7 @@ export default function FolderDetailScreen({ route, navigation }) {
           const count = calculateDescendantItemCount(item.id);
           const status = item.status || (item.currentHolder ? 'CheckedOut' : 'Available');
           const statusColors = getStatusColors(status);
-          const holder = item.currentHolder || 'None';
+          const holder = getHolderName(item.currentHolder);
 
           const isSelected = selectedSet.has(item.id);
 

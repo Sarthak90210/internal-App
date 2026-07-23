@@ -111,3 +111,47 @@ export async function logAdminAction(actionType, targetType, details) {
     console.error('Failed to log admin action:', error);
   }
 }
+
+export async function fetchAdmins() {
+  const idToken = await getIdToken();
+  const res = await fetch(`${API_URL}/api/admins`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.admins || [];
+}
+
+export async function syncUserPermissions(email, selectedTagIds, allTags, currentAdmins) {
+  let targetIsAdmin = false;
+  let targetIsSuperAdmin = false;
+
+  for (const tagId of selectedTagIds) {
+    const tag = allTags.find(t => t.id === tagId);
+    if (tag?.grantsAdmin) targetIsAdmin = true;
+    if (tag?.grantsSuperAdmin) {
+      targetIsAdmin = true;
+      targetIsSuperAdmin = true;
+    }
+  }
+
+  const currentAdminRec = currentAdmins.find(a => a.email === email);
+  
+  // Safety: Never demote root through this UI
+  if (currentAdminRec?.isRoot) return;
+
+  const currentIsAdmin = !!currentAdminRec;
+  const currentIsSuperAdmin = currentAdminRec?.isSuperAdmin || false;
+
+  if (targetIsAdmin && !currentIsAdmin) {
+    await apiPost('/api/setAdmin', { email });
+  } else if (!targetIsAdmin && currentIsAdmin) {
+    await apiPost('/api/removeAdmin', { email });
+  }
+
+  if (targetIsSuperAdmin && !currentIsSuperAdmin) {
+    await apiPost('/api/setSuperAdmin', { email });
+  } else if (!targetIsSuperAdmin && currentIsSuperAdmin) {
+    await apiPost('/api/removeSuperAdmin', { email });
+  }
+}

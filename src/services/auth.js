@@ -1,7 +1,8 @@
 import { GoogleAuthProvider, signInWithCredential, signOut } from 'firebase/auth';
-import { auth } from '../firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 import { useAuthStore } from '../stores/authStore';
-
+import { Alert } from 'react-native';
 export const AuthService = {
   signInWithGoogleToken: async (idToken) => {
     try {
@@ -15,9 +16,20 @@ export const AuthService = {
       const idTokenResult = await user.getIdTokenResult();
       const claims = idTokenResult.claims;
       
+      const hasAdminClaim = claims.admin || claims.superAdmin;
+      const userDocRef = doc(db, 'users', user.email.toLowerCase());
+      const userDoc = await getDoc(userDocRef);
+      const isAuthorizedUser = userDoc.exists() && userDoc.data().isActive !== false && userDoc.data().isArchived !== true;
+
+      if (!hasAdminClaim && !isAuthorizedUser) {
+        await signOut(auth);
+        throw new Error('Access Denied: You are not an authorized team member.');
+      }
+      
       useAuthStore.getState().setUser(user);
       useAuthStore.getState().setRoles({
         admin: claims.admin,
+        superAdmin: claims.superAdmin,
         inventory: claims.inventory,
         board: claims.board,
         media: claims.media,
@@ -47,15 +59,34 @@ export const AuthService = {
   initializeAuthListener: () => {
     return auth.onAuthStateChanged(async (user) => {
       if (user) {
-        useAuthStore.getState().setUser(user);
-        const idTokenResult = await user.getIdTokenResult();
-        const claims = idTokenResult.claims;
-        useAuthStore.getState().setRoles({
-          admin: claims.admin,
-          inventory: claims.inventory,
-          board: claims.board,
-          media: claims.media,
-        });
+        try {
+          const idTokenResult = await user.getIdTokenResult();
+          const claims = idTokenResult.claims;
+          const hasAdminClaim = claims.admin || claims.superAdmin;
+
+          const userDocRef = doc(db, 'users', user.email.toLowerCase());
+          const userDoc = await getDoc(userDocRef);
+          const isAuthorizedUser = userDoc.exists() && userDoc.data().isActive !== false && userDoc.data().isArchived !== true;
+
+          if (!hasAdminClaim && !isAuthorizedUser) {
+            await signOut(auth);
+            Alert.alert('Access Denied', 'You are not an authorized team member.');
+            useAuthStore.getState().logout();
+          } else {
+            useAuthStore.getState().setUser(user);
+            useAuthStore.getState().setRoles({
+              admin: claims.admin,
+              superAdmin: claims.superAdmin,
+              inventory: claims.inventory,
+              board: claims.board,
+              media: claims.media,
+            });
+          }
+        } catch (err) {
+          console.error('Error verifying user status:', err);
+          await signOut(auth);
+          useAuthStore.getState().logout();
+        }
       } else {
         useAuthStore.getState().logout();
       }

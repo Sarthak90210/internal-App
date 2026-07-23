@@ -4,6 +4,7 @@ import { Searchbar, List, useTheme, Text, ActivityIndicator, Button, Checkbox, I
 import { InventoryService } from '../../services/inventory';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useAuthStore } from '../../stores/authStore';
+import { UsersService } from '../../services/users';
 import MoveDestinationModal from '../../components/MoveDestinationModal';
 import ExportModal from '../../components/ExportModal';
 
@@ -25,6 +26,7 @@ export default function InventoryDetailScreen({ route, navigation }) {
   const [allItems, setAllItems] = useState([]);
   const [allInvs, setAllInvs] = useState([]);
   const [lists, setLists] = useState([]);
+  const [usersList, setUsersList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -48,12 +50,14 @@ export default function InventoryDetailScreen({ route, navigation }) {
     const unsubscribeAllInvs = InventoryService.subscribeToAllInventories((data) => setAllInvs(data));
     const unsubscribeLists = InventoryService.subscribeToLists((data) => setLists(data));
     const unsubscribeAllItems = InventoryService.subscribeToAllItems((data) => setAllItems(data));
+    const unsubscribeUsers = UsersService.subscribeToUsers((data) => setUsersList(data));
 
     return () => {
       unsubscribeList();
       unsubscribeAllInvs();
       unsubscribeLists();
       unsubscribeAllItems();
+      if (unsubscribeUsers) unsubscribeUsers();
     };
   }, [listId, listName, navigation]);
 
@@ -61,6 +65,12 @@ export default function InventoryDetailScreen({ route, navigation }) {
     !i.parentInventoryId && 
     (i.name?.toLowerCase().includes(searchQuery.toLowerCase()))
   );
+
+  const getHolderName = (email) => {
+    if (!email) return 'None';
+    const userObj = usersList.find(u => u.email === email);
+    return userObj?.name || email;
+  };
 
   const toggleSelection = (id) => {
     const next = new Set(selectedInventories);
@@ -157,7 +167,7 @@ export default function InventoryDetailScreen({ route, navigation }) {
           renderItem={({ item }) => {
             const count = calculateDescendantItemCount(item.id);
             const status = item.status || (item.currentHolder ? 'CheckedOut' : 'Available');
-            const holder = item.currentHolder || 'None';
+            const holder = getHolderName(item.currentHolder);
             const isSelected = selectedInventories.has(item.id);
             const statusStyle = getStatusStyle(status);
 

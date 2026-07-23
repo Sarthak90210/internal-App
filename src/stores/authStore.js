@@ -4,6 +4,7 @@ export const useAuthStore = create((set, get) => ({
   user: null,
   roles: {
     admin: false,
+    superAdmin: false,
     inventory: false,
     board: false,
     media: false,
@@ -15,6 +16,7 @@ export const useAuthStore = create((set, get) => ({
   setRoles: (roles) => set({ 
     roles: {
       admin: !!roles?.admin,
+      superAdmin: !!roles?.superAdmin,
       inventory: !!roles?.inventory,
       board: !!roles?.board,
       media: !!roles?.media,
@@ -25,13 +27,17 @@ export const useAuthStore = create((set, get) => ({
   
   hasPermission: (permissionName) => {
     const { roles } = get();
-    // Admin has all permissions
+    // Super Admin has all permissions
+    if (roles.superAdmin) return true;
+    // Only Super Admin has superAdmin permission
+    if (permissionName === 'superAdmin') return false;
+    // Regular Admin has all permissions except superAdmin
     if (roles.admin) return true;
     return !!roles[permissionName];
   },
   
   logout: () => set({ 
     user: null, 
-    roles: { admin: false, inventory: false, board: false, media: false } 
+    roles: { admin: false, superAdmin: false, inventory: false, board: false, media: false } 
   }),
 }));

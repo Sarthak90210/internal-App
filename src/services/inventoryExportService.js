@@ -32,7 +32,7 @@ export const exportToCsv = async (filter = {}, fileName = 'TRFPV_Inventory.csv')
     
     const fileUri = FileSystem.documentDirectory + fileName;
     await FileSystem.writeAsStringAsync(fileUri, csvContent, {
-      encoding: FileSystem.EncodingType.UTF8
+      encoding: 'utf8'
     });
 
     const canShare = await Sharing.isAvailableAsync();
@@ -94,7 +94,7 @@ export const exportToExcel = async (filter = {}, fileName = 'TRFPV_Inventory.csv
     const content = lines.join('\n');
     const fileUri = FileSystem.documentDirectory + fileName;
     await FileSystem.writeAsStringAsync(fileUri, content, {
-      encoding: FileSystem.EncodingType.UTF8
+      encoding: 'utf8'
     });
 
     const canShare = await Sharing.isAvailableAsync();

@@ -11,11 +11,8 @@ const adminModules = [
   { title: "Achievements", route: "ManageAchievements", icon: "trophy", permission: "board" },
   { title: "Board", route: "ManageTeam", icon: "account-group", permission: "board" },
   { title: "Events", route: "ManageEvents", icon: "calendar", permission: "board" },
-  { title: "Google Sheets", route: "ManageGoogleSheets", icon: "google-spreadsheet", permission: "admin" },
   { title: "Messages", route: "ManageContactMessages", icon: "message-text", permission: "board" },
-  { title: "Traffic", route: "ManageTraffic", icon: "chart-line", permission: "admin" },
-  { title: "Team Members", route: "ManageTeamMembers", icon: "account-cog", permission: "admin" },
-  { title: "Logs", route: "ManageLogs", icon: "file-document-outline", permission: "admin" },
+  { title: "Team Members", route: "ManageTeamMembers", icon: "account-cog", permission: "superAdmin" },
 ];
 
 export default function AdminDashboardScreen({ navigation }) {
