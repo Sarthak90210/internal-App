@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { View, FlatList, StyleSheet, Alert } from 'react-native';
 import { Searchbar, FAB, List, useTheme, Text, ActivityIndicator, Dialog, Portal, TextInput, Button, IconButton, SegmentedButtons } from 'react-native-paper';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { InventoryService } from '../../services/inventory';
 import { UsersService } from '../../services/users';
+import { useAuthStore } from '../../stores/authStore';
 
 export default function InventoryListsScreen({ navigation }) {
   const theme = useTheme();
@@ -17,7 +19,15 @@ export default function InventoryListsScreen({ navigation }) {
   const [newListName, setNewListName] = useState('');
   const [activeTab, setActiveTab] = useState('active');
 
+  const { hasPermission } = useAuthStore();
+  const hasInventoryPermission = hasPermission('inventory');
+
   useEffect(() => {
+    if (!hasInventoryPermission) {
+      setLoading(false);
+      return;
+    }
+
     const unsubscribeLists = InventoryService.subscribeToLists((data) => {
       setLists(data);
       setLoading(false);
@@ -38,7 +48,7 @@ export default function InventoryListsScreen({ navigation }) {
       if (unsubscribeItems) unsubscribeItems();
       if (unsubscribeUsers) unsubscribeUsers();
     };
-  }, []);
+  }, [hasInventoryPermission]);
 
   const handleAddList = async () => {
     if (!newListName.trim()) return;
@@ -213,6 +223,18 @@ export default function InventoryListsScreen({ navigation }) {
       />
     );
   };
+
+  if (!hasInventoryPermission) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <MaterialCommunityIcons name="shield-lock-outline" size={80} color={theme.colors.error} style={{ marginBottom: 16 }} />
+        <Text variant="headlineSmall" style={{ color: theme.colors.onBackground, marginBottom: 8, fontWeight: 'bold' }}>Access Denied</Text>
+        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center', paddingHorizontal: 32 }}>
+          You don&apos;t have permission to view or manage the inventory. Please contact an administrator if you need access.
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>

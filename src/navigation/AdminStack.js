@@ -4,7 +4,6 @@ import { useTheme } from 'react-native-paper';
 
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
 import ManageEventsScreen from '../screens/admin/ManageEventsScreen';
-import ManageDronesScreen from '../screens/admin/ManageDronesScreen';
 import ManageGalleryScreen from '../screens/admin/ManageGalleryScreen';
 import ManageTeamScreen from '../screens/admin/ManageTeamScreen';
 import ManageAchievementsScreen from '../screens/admin/ManageAchievementsScreen';
@@ -28,7 +27,6 @@ export default function AdminStack() {
     >
       <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} options={{ title: 'Admin Dashboard' }} />
       <Stack.Screen name="ManageEvents" component={ManageEventsScreen} options={{ title: 'Manage Events' }} />
-      <Stack.Screen name="ManageDrones" component={ManageDronesScreen} options={{ title: 'Manage Drones' }} />
       <Stack.Screen name="ManageGallery" component={ManageGalleryScreen} options={{ title: 'Manage Gallery' }} />
       <Stack.Screen name="ManageTeam" component={ManageTeamScreen} options={{ title: 'Manage Team' }} />
       <Stack.Screen name="ManageAchievements" component={ManageAchievementsScreen} options={{ title: 'Manage Achievements' }} />

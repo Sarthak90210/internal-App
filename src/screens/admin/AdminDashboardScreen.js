@@ -6,7 +6,6 @@ import { useAuthStore } from '../../stores/authStore';
 const adminModules = [
   { title: "Gallery", route: "ManageGallery", icon: "image-multiple", permission: "media" },
   { title: "Sponsors", route: "ManageSponsors", icon: "handshake", permission: "board" },
-  { title: "Drones", route: "ManageDrones", icon: "quadcopter", permission: "inventory" },
   { title: "Home Page", route: "ManageHomeSettings", icon: "home-edit", permission: "admin" },
   { title: "Achievements", route: "ManageAchievements", icon: "trophy", permission: "board" },
   { title: "Board", route: "ManageTeam", icon: "account-group", permission: "board" },

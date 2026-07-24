@@ -64,9 +64,14 @@ export const AuthService = {
           const claims = idTokenResult.claims;
           const hasAdminClaim = claims.admin || claims.superAdmin;
 
-          const userDocRef = doc(db, 'users', user.email.toLowerCase());
-          const userDoc = await getDoc(userDocRef);
-          const isAuthorizedUser = userDoc.exists() && userDoc.data().isActive !== false && userDoc.data().isArchived !== true;
+          let isAuthorizedUser = true;
+          try {
+            const userDocRef = doc(db, 'users', user.email.toLowerCase());
+            const userDoc = await getDoc(userDocRef);
+            isAuthorizedUser = userDoc.exists() && userDoc.data().isActive !== false && userDoc.data().isArchived !== true;
+          } catch (docErr) {
+            console.warn('Network or cache error verifying user doc, assuming authorized:', docErr);
+          }
 
           if (!hasAdminClaim && !isAuthorizedUser) {
             await signOut(auth);
@@ -84,8 +89,8 @@ export const AuthService = {
           }
         } catch (err) {
           console.error('Error verifying user status:', err);
-          await signOut(auth);
-          useAuthStore.getState().logout();
+          // Fallback: don't sign out, just set user so they aren't stuck on loading or randomly signed out
+          useAuthStore.getState().setUser(user);
         }
       } else {
         useAuthStore.getState().logout();

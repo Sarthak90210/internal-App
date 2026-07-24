@@ -10,7 +10,7 @@ export default function AdminScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Admin Dashboard</Text>
-      <Text>Manage Events, Gallery, and Drones here.</Text>
+      <Text>Manage Events and Gallery here.</Text>
       
       <View style={{ marginTop: 20 }}>
         <Button title="Sign Out" onPress={handleLogout} color="red" />
