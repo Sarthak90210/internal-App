@@ -46,3 +46,10 @@ example
 # google services
 google-services.json
 GoogleService-Info.plist
+
+# build artifacts & local caches
+.npm-cache/
+*.apk
+*.aab
+.agents/
+.claude/

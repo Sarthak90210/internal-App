@@ -1,0 +1,5 @@
+!google-services.json
+/android/build/
+/android/.gradle/
+/android/.cxx/
+/android/app/build/

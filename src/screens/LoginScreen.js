@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Alert } from 'react-native';
+import { View, StyleSheet, Alert, Image } from 'react-native';
 import { Button, Text, ActivityIndicator, useTheme } from 'react-native-paper';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { AuthService } from '../services/auth';
@@ -59,8 +59,12 @@ export default function LoginScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <Image 
+        source={require('../../assets/images/logo.png')} 
+        style={{ width: 100, height: 100, marginBottom: 16, resizeMode: 'contain' }} 
+      />
       <Text variant="headlineMedium" style={{ color: theme.colors.onBackground, fontWeight: 'bold', marginBottom: 10 }}>
-        Team Rotor FPV
+        RFV
       </Text>
       <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 40 }}>
         Internal Management App
