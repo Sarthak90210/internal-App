@@ -2,12 +2,13 @@
 set -e
 
 echo "=== Setting up Linux Node.js ==="
-if [ ! -f /tmp/node-linux/bin/node ]; then
+NODE_DIR="$HOME/.local/node"
+if [ ! -f "$NODE_DIR/bin/node" ]; then
   echo "Downloading Linux Node.js (v22.13.0)..."
-  mkdir -p /tmp/node-linux
-  curl -fsSL https://nodejs.org/dist/v22.13.0/node-v22.13.0-linux-x64.tar.xz | tar -xJ -C /tmp/node-linux --strip-components=1
+  mkdir -p "$NODE_DIR"
+  curl -fsSL https://nodejs.org/dist/v22.13.0/node-v22.13.0-linux-x64.tar.xz | tar -xJ -C "$NODE_DIR" --strip-components=1
 fi
-export PATH="/tmp/node-linux/bin:$PATH"
+export PATH="$NODE_DIR/bin:$PATH"
 
 echo "Node version: $(node -v)"
 echo "npm version: $(npm -v)"
@@ -24,7 +25,7 @@ echo "JAVA_HOME: $JAVA_HOME"
 echo "Java version: $(java -version 2>&1 | head -n 1)"
 
 echo "=== Setting up Linux Android SDK ==="
-SDK_DIR="/tmp/android-sdk-linux"
+SDK_DIR="$HOME/.local/android-sdk-linux"
 if [ ! -f "$SDK_DIR/build-tools/35.0.0/aapt2" ]; then
   echo "Running Linux SDK setup..."
   bash "$(dirname "$0")/setup_linux_sdk.sh"

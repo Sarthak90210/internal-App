@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-SDK_DIR="/tmp/android-sdk-linux"
+SDK_DIR="$HOME/.local/android-sdk-linux"
 mkdir -p "$SDK_DIR"
 
 # Symlink platform-independent directories from Windows SDK
