@@ -102,16 +102,23 @@ export default function ProfileScreen() {
   }, [authUser]);
 
   const handlePickImage = async () => {
+    let result;
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
       });
+    } catch (error) {
+      console.error('Image picking error:', error);
+      Alert.alert('Error', 'Failed to pick image');
+      return;
+    }
 
-      if (!result.canceled && result.assets[0]) {
-        setUploadingImage(true);
+    if (!result.canceled && result.assets[0]) {
+      setUploadingImage(true);
+      try {
         const uri = result.assets[0].uri;
         const folder = `users/${authUser.email.toLowerCase()}`;
         const response = await uploadFile(uri, folder);
@@ -122,12 +129,12 @@ export default function ProfileScreen() {
         } else {
           Alert.alert('Upload Failed', response.data?.error || 'Failed to upload image.');
         }
+      } catch (error) {
+        console.error('Image upload error:', error);
+        Alert.alert('Upload Failed', error.message || 'Failed to upload image.');
+      } finally {
+        setUploadingImage(false);
       }
-    } catch (error) {
-      console.error('Image picking error:', error);
-      Alert.alert('Error', 'Failed to pick image');
-    } finally {
-      setUploadingImage(false);
     }
   };
 

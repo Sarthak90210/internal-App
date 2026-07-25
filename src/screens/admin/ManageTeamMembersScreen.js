@@ -269,12 +269,19 @@ export default function ManageTeamMembersScreen() {
   };
 
   const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-    });
+    let result;
+    try {
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+    } catch (error) {
+      console.error("Image picking error:", error);
+      Alert.alert("Error", "Failed to pick image");
+      return;
+    }
 
     if (!result.canceled && result.assets.length > 0) {
       const asset = result.assets[0];
@@ -351,7 +358,7 @@ export default function ManageTeamMembersScreen() {
         <Card.Content>
           {item.isOrphanedAdmin && (
             <Text style={{ color: theme.colors.warning, fontSize: 12, marginBottom: 8 }}>
-              This admin doesn't have a full profile yet. Click Edit to create one.
+              {"This admin doesn't have a full profile yet. Click Edit to create one."}
             </Text>
           )}
           <View style={styles.tagsRow}>

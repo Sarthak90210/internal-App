@@ -31,7 +31,7 @@ export async function uploadFile(fileUri, folder) {
   const form = new FormData();
   
   // Get filename from URI
-  const filename = fileUri.split('/').pop();
+  let filename = fileUri.split('/').pop() || 'upload.jpg';
   
   // Infer type based on extension
   const match = /\.(\w+)$/.exec(filename);
@@ -41,6 +41,9 @@ export async function uploadFile(fileUri, folder) {
     type = `video/${ext === 'mov' ? 'quicktime' : ext}`;
   } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
     type = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+  }
+  if (!ext && type === 'image/jpeg') {
+    filename += '.jpg';
   }
 
   form.append('image', {
@@ -55,7 +58,6 @@ export async function uploadFile(fileUri, folder) {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${idToken}`,
-      'Content-Type': 'multipart/form-data',
     },
     body: form,
   });

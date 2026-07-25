@@ -63,17 +63,24 @@ export default function ManageHomeSettingsScreen() {
   };
 
   const handlePickVideo = async () => {
+    let result;
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['videos'],
         allowsEditing: true,
         quality: 1,
       });
+    } catch (error) {
+      console.error("Video picking error:", error);
+      Alert.alert("Error", "Failed to pick video.");
+      return;
+    }
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const fileUri = result.assets[0].uri;
-        
-        setIsUploading(true);
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      const fileUri = result.assets[0].uri;
+      
+      setIsUploading(true);
+      try {
         const { ok, data: uploadedMedia } = await uploadFile(fileUri, "home");
         
         if (ok && uploadedMedia.secure_url) {
@@ -81,12 +88,12 @@ export default function ManageHomeSettingsScreen() {
         } else {
           Alert.alert("Upload Failed", uploadedMedia.error || "Please try again.");
         }
+      } catch (error) {
+        console.error("Upload error:", error);
+        Alert.alert("Upload Failed", error.message || "Failed to upload video.");
+      } finally {
+        setIsUploading(false);
       }
-    } catch (error) {
-      console.error("Upload error:", error);
-      Alert.alert("Error", "Failed to upload video.");
-    } finally {
-      setIsUploading(false);
     }
   };
 

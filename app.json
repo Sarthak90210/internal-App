@@ -23,7 +23,8 @@
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false,
-      "runtimeVersion": "1.1.0"
+      "runtimeVersion": "1.1.0",
+      "usesCleartextTraffic": true
     },
     "web": {
       "output": "static",
