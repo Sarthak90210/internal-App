@@ -61,10 +61,7 @@ export default function InventoryDetailScreen({ route, navigation }) {
     };
   }, [listId, listName, navigation]);
 
-  const filtered = inventories.filter(i => 
-    !i.parentInventoryId && 
-    (i.name?.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const topLevelInventories = inventories.filter(i => !i.parentInventoryId);
 
   const getHolderName = (email) => {
     if (!email) return 'None';
@@ -80,10 +77,10 @@ export default function InventoryDetailScreen({ route, navigation }) {
   };
 
   const handleSelectAll = () => {
-    if (selectedInventories.size === filtered.length) {
+    if (selectedInventories.size === topLevelInventories.length) {
       setSelectedInventories(new Set());
     } else {
-      setSelectedInventories(new Set(filtered.map(i => i.id)));
+      setSelectedInventories(new Set(topLevelInventories.map(i => i.id)));
     }
   };
 
@@ -124,35 +121,186 @@ export default function InventoryDetailScreen({ route, navigation }) {
     return { bg: theme.colors.errorContainer, color: theme.colors.onErrorContainer };
   };
 
+  const renderNormalView = () => (
+    <FlatList
+      data={topLevelInventories}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={{ paddingBottom: 80 }}
+      renderItem={({ item }) => {
+        const count = calculateDescendantItemCount(item.id);
+        const status = item.status || (item.currentHolder ? 'CheckedOut' : 'Available');
+        const holder = getHolderName(item.currentHolder);
+        const isSelected = selectedInventories.has(item.id);
+        const statusStyle = getStatusStyle(status);
+
+        return (
+          <TouchableOpacity 
+            activeOpacity={0.8}
+            onPress={() => {
+              if (isSelectionMode) {
+                toggleSelection(item.id);
+              } else {
+                navigation.navigate('FolderDetail', { inventoryId: item.id, inventoryName: item.name });
+              }
+            }}
+            style={[
+              styles.card, 
+              { backgroundColor: theme.colors.surface },
+              isSelected && { borderWidth: 2, borderColor: theme.colors.primary }
+            ]}
+          >
+            <View style={styles.cardHeader}>
+              {isSelectionMode && (
+                <View style={{ marginRight: 8 }}>
+                  <Checkbox status={isSelected ? 'checked' : 'unchecked'} onPress={() => toggleSelection(item.id)} />
+                </View>
+              )}
+              <Text variant="titleMedium" style={{ flex: 1, fontWeight: 'bold' }}>{item.name || 'Unnamed Inventory'}</Text>
+              <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
+                <Text style={{ fontSize: 10, color: statusStyle.color }}>{status}</Text>
+              </View>
+            </View>
+            
+            <View style={styles.cardMeta}>
+              <View style={styles.metaItem}>
+                <MaterialCommunityIcons name="account" size={14} color={theme.colors.onSurfaceVariant} />
+                <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginLeft: 4 }}>{holder}</Text>
+              </View>
+              <View style={styles.metaItem}>
+                <MaterialCommunityIcons name="package-variant-closed" size={14} color={theme.colors.onSurfaceVariant} />
+                <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginLeft: 4 }}>{count}</Text>
+              </View>
+              <View style={styles.metaItem}>
+                <MaterialCommunityIcons name="clock-outline" size={14} color={theme.colors.onSurfaceVariant} />
+                <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginLeft: 4 }}>
+                  {getRelativeTime(item.createdAt)}
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        );
+      }}
+      ListEmptyComponent={
+        <Text style={{ textAlign: 'center', marginTop: 20, color: theme.colors.onSurfaceVariant }}>
+          No inventories found.
+        </Text>
+      }
+    />
+  );
+
+  const renderSearchResults = () => {
+    const q = searchQuery.toLowerCase();
+    
+    const validInvs = allInvs.filter(i => i.listId === listId);
+    const validInvIds = new Set(validInvs.map(i => i.id));
+
+    const matchedInvs = validInvs.filter(i => i.name?.toLowerCase().includes(q)).map(i => ({ ...i, _type: 'folder' }));
+    const matchedItems = allItems.filter(i => validInvIds.has(i.inventoryId) && i.name?.toLowerCase().includes(q)).map(i => ({ ...i, _type: 'item' }));
+    
+    const heldInvsInList = validInvs.filter(i => i.currentHolder);
+    const holderIdentifiers = new Set();
+    heldInvsInList.forEach(i => {
+      if (i.currentHolder) holderIdentifiers.add(i.currentHolder.toLowerCase());
+    });
+    const matchedUsers = usersList.filter(u => 
+      (holderIdentifiers.has(u.email?.toLowerCase()) || holderIdentifiers.has(u.id?.toLowerCase())) && 
+      (u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q))
+    ).map(u => ({ ...u, _type: 'user' }));
+    
+    const combined = [...matchedInvs, ...matchedItems, ...matchedUsers];
+
+    return (
+      <FlatList
+        data={combined}
+        keyExtractor={(item) => item._type + '_' + item.id}
+        contentContainerStyle={{ paddingBottom: 80, paddingTop: 8 }}
+        renderItem={({ item }) => {
+          let icon = "folder";
+          let color = theme.colors.secondary;
+          let subtitle = "";
+          let onPress = () => {};
+
+          if (item._type === 'folder') {
+            icon = "folder";
+            color = theme.colors.secondary;
+            const parentInv = allInvs.find(i => i.id === item.parentInventoryId);
+            subtitle = parentInv ? `Sub-folder • In ${parentInv.name}` : `Folder • In ${listName || 'List'}`;
+            onPress = () => navigation.navigate('FolderDetail', { inventoryId: item.id, inventoryName: item.name });
+          } else if (item._type === 'item') {
+            icon = "tools";
+            color = theme.colors.tertiary;
+            const parentInv = allInvs.find(i => i.id === item.inventoryId);
+            subtitle = `Item • Qty: ${item.quantity || 0}${parentInv ? ` • In ${parentInv.name}` : ''}`;
+            onPress = () => navigation.navigate('ItemDetail', { itemId: item.id, itemData: item });
+          } else if (item._type === 'user') {
+            icon = "account";
+            color = theme.colors.tertiary;
+            const userHeldInvs = validInvs.filter(inv => inv.currentHolder?.toLowerCase() === item.email?.toLowerCase() || inv.currentHolder === item.id);
+            subtitle = `${item.email || ''} • Holds ${userHeldInvs.length} folders in this list`;
+            onPress = () => {
+              if (userHeldInvs.length > 0) {
+                navigation.navigate('FolderDetail', { inventoryId: userHeldInvs[0].id, inventoryName: userHeldInvs[0].name });
+              }
+            };
+          }
+
+          return (
+            <List.Item
+              title={item.name || item.email}
+              description={subtitle}
+              titleStyle={{ color: theme.colors.onSurface, fontWeight: 'bold' }}
+              style={{ backgroundColor: theme.colors.surface, marginHorizontal: 16, marginVertical: 6, borderRadius: 8, elevation: 1 }}
+              left={props => <List.Icon {...props} icon={icon} color={color} />}
+              onPress={onPress}
+            />
+          );
+        }}
+        ListEmptyComponent={
+          <Text style={{ textAlign: 'center', marginTop: 20, color: theme.colors.onSurfaceVariant }}>
+            No results found in this list.
+          </Text>
+        }
+      />
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       
-      <View style={styles.headerActions}>
-        <Button 
-          icon="download" 
-          mode="text" 
-          onPress={() => setIsExportModalVisible(true)}
-        >
-          Export
-        </Button>
-        <Button 
-          icon={isSelectionMode ? "check-all" : "check"} 
-          mode={isSelectionMode ? "contained-tonal" : "text"}
-          onPress={() => {
-            if (!isSelectionMode) setIsSelectionMode(true);
-            else handleSelectAll();
-          }}
-        >
-          {isSelectionMode ? (selectedInventories.size === filtered.length && filtered.length > 0 ? 'Deselect All' : 'Select All') : 'Select'}
-        </Button>
-        {isSelectionMode && (
-          <IconButton icon="close" size={20} onPress={() => { setIsSelectionMode(false); setSelectedInventories(new Set()); }} />
-        )}
-      </View>
+      {!searchQuery.trim() && (
+        <View style={styles.headerActions}>
+          <Button 
+            icon="download" 
+            mode="text" 
+            onPress={() => setIsExportModalVisible(true)}
+          >
+            Export
+          </Button>
+          <Button 
+            icon={isSelectionMode ? "check-all" : "check"} 
+            mode={isSelectionMode ? "contained-tonal" : "text"}
+            onPress={() => {
+              if (!isSelectionMode) setIsSelectionMode(true);
+              else handleSelectAll();
+            }}
+          >
+            {isSelectionMode ? (selectedInventories.size === topLevelInventories.length && topLevelInventories.length > 0 ? 'Deselect All' : 'Select All') : 'Select'}
+          </Button>
+          {isSelectionMode && (
+            <IconButton icon="close" size={20} onPress={() => { setIsSelectionMode(false); setSelectedInventories(new Set()); }} />
+          )}
+        </View>
+      )}
 
       <Searchbar
-        placeholder="Search Inventories..."
-        onChangeText={setSearchQuery}
+        placeholder={searchQuery ? `Searching in ${listName || 'this list'}...` : `Search ${listName || 'list'} (folders, items, holders)...`}
+        onChangeText={(text) => {
+          setSearchQuery(text);
+          if (text.trim()) {
+            setIsSelectionMode(false);
+            setSelectedInventories(new Set());
+          }
+        }}
         value={searchQuery}
         style={[styles.searchbar, { backgroundColor: theme.colors.surface }]}
       />
@@ -160,73 +308,10 @@ export default function InventoryDetailScreen({ route, navigation }) {
       {loading ? (
         <ActivityIndicator style={{ marginTop: 20 }} color={theme.colors.primary} />
       ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingBottom: 80 }}
-          renderItem={({ item }) => {
-            const count = calculateDescendantItemCount(item.id);
-            const status = item.status || (item.currentHolder ? 'CheckedOut' : 'Available');
-            const holder = getHolderName(item.currentHolder);
-            const isSelected = selectedInventories.has(item.id);
-            const statusStyle = getStatusStyle(status);
-
-            return (
-              <TouchableOpacity 
-                activeOpacity={0.8}
-                onPress={() => {
-                  if (isSelectionMode) {
-                    toggleSelection(item.id);
-                  } else {
-                    navigation.navigate('FolderDetail', { inventoryId: item.id, inventoryName: item.name });
-                  }
-                }}
-                style={[
-                  styles.card, 
-                  { backgroundColor: theme.colors.surface },
-                  isSelected && { borderWidth: 2, borderColor: theme.colors.primary }
-                ]}
-              >
-                <View style={styles.cardHeader}>
-                  {isSelectionMode && (
-                    <View style={{ marginRight: 8 }}>
-                      <Checkbox status={isSelected ? 'checked' : 'unchecked'} onPress={() => toggleSelection(item.id)} />
-                    </View>
-                  )}
-                  <Text variant="titleMedium" style={{ flex: 1, fontWeight: 'bold' }}>{item.name || 'Unnamed Inventory'}</Text>
-                  <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
-                    <Text style={{ fontSize: 10, color: statusStyle.color }}>{status}</Text>
-                  </View>
-                </View>
-                
-                <View style={styles.cardMeta}>
-                  <View style={styles.metaItem}>
-                    <MaterialCommunityIcons name="account" size={14} color={theme.colors.onSurfaceVariant} />
-                    <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginLeft: 4 }}>{holder}</Text>
-                  </View>
-                  <View style={styles.metaItem}>
-                    <MaterialCommunityIcons name="package-variant-closed" size={14} color={theme.colors.onSurfaceVariant} />
-                    <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginLeft: 4 }}>{count}</Text>
-                  </View>
-                  <View style={styles.metaItem}>
-                    <MaterialCommunityIcons name="clock-outline" size={14} color={theme.colors.onSurfaceVariant} />
-                    <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginLeft: 4 }}>
-                      {getRelativeTime(item.createdAt)}
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          }}
-          ListEmptyComponent={
-            <Text style={{ textAlign: 'center', marginTop: 20, color: theme.colors.onSurfaceVariant }}>
-              No inventories found.
-            </Text>
-          }
-        />
+        searchQuery.trim() ? renderSearchResults() : renderNormalView()
       )}
 
-      {isSelectionMode && selectedInventories.size > 0 && (
+      {!searchQuery.trim() && isSelectionMode && selectedInventories.size > 0 && (
         <View style={[styles.bulkAction, { backgroundColor: theme.colors.elevation.level3 }]}>
           <Text>{selectedInventories.size} selected</Text>
           <Button mode="contained" onPress={() => setIsMoveModalVisible(true)}>Move</Button>
@@ -262,7 +347,7 @@ export default function InventoryDetailScreen({ route, navigation }) {
         listId={listId} 
       />
 
-      {!isSelectionMode && (
+      {!isSelectionMode && !searchQuery.trim() && (
         <FAB
           icon="plus"
           style={[styles.fab, { backgroundColor: theme.colors.primary }]}

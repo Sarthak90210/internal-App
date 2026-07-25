@@ -5,6 +5,9 @@ const React = require('react');
 const FolderDetailScreenModule = require('../src/screens/inventory/FolderDetailScreen');
 const FolderDetailScreen = FolderDetailScreenModule.default || FolderDetailScreenModule;
 
+const InventoryDetailScreenModule = require('../src/screens/inventory/InventoryDetailScreen');
+const InventoryDetailScreen = InventoryDetailScreenModule.default || InventoryDetailScreenModule;
+
 const AppNavigatorModule = require('../src/navigation/AppNavigator');
 const AppNavigator = AppNavigatorModule.default || AppNavigatorModule;
 
@@ -84,6 +87,15 @@ async function testScreensNavigation() {
       caughtErr.message.includes('find is not a function') || caughtErr instanceof TypeError,
       `Expected TypeError on allInvs.find, got: ${caughtErr.message}`
     );
+  });
+
+  await runTest('InventoryDetailScreen component render and list-scoped search', async () => {
+    const route = { params: { listId: 'l1', listName: 'Drone Parts List' } };
+    const navigation = { setOptions: (opts) => { navigation.lastOptions = opts; }, navigate: () => {} };
+
+    const element = InventoryDetailScreen({ route, navigation });
+    assert.ok(element, 'InventoryDetailScreen returned a React node tree');
+    assert.strictEqual(navigation.lastOptions.title, 'Drone Parts List');
   });
 
   // 2. AppNavigator Tests

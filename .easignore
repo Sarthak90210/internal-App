@@ -1,5 +1,28 @@
-!google-services.json
+# Ignore node_modules and caches
+node_modules/
+.npm-cache/
+.expo/
+dist/
+web-build/
+.agents/
+.claude/
+.vscode/
+.git/
+
+# Ignore local builds and binaries
+*.apk
+*.aab
+*.ipa
+*.app
+
+# Ignore native build directories
 /android/build/
 /android/.gradle/
 /android/.cxx/
 /android/app/build/
+/ios/build/
+/ios/Pods/
+
+# Ensure google-services is included
+!google-services.json
+!GoogleService-Info.plist
