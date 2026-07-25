@@ -2,7 +2,7 @@
   "expo": {
     "name": "RFV",
     "slug": "App",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "app",
@@ -23,7 +23,7 @@
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false,
-      "runtimeVersion": "1.1.0",
+      "runtimeVersion": "1.1.1",
       "usesCleartextTraffic": true
     },
     "web": {
@@ -53,7 +53,9 @@
       }
     },
     "updates": {
-      "url": "https://u.expo.dev/3723ae93-3dfe-4f79-980c-b3754e4168ee"
+      "url": "https://u.expo.dev/3723ae93-3dfe-4f79-980c-b3754e4168ee",
+      "checkAutomatically": "ON_ERROR_RECOVERY",
+      "fallbackToCacheTimeout": 0
     }
   }
 }

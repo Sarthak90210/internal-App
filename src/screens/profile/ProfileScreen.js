@@ -9,6 +9,7 @@ import { TagsService } from '../../services/tags';
 import { uploadFile, apiPost, fetchAdmins, syncUserPermissions, logAdminAction } from '../../services/adminApi';
 import { expandTagIds, getGrantedTagIds } from '../../lib/tagGrants';
 import * as ImagePicker from 'expo-image-picker';
+import { useUpdateStore } from '../../stores/updateStore';
 
 // Helper to get initials
 const getInitials = (name) => {
@@ -23,6 +24,7 @@ const getInitials = (name) => {
 export default function ProfileScreen() {
   const theme = useTheme();
   const { user: authUser, roles } = useAuthStore();
+  const { checkForUpdate, isChecking, isDownloading } = useUpdateStore();
   
   const [profile, setProfile] = useState(null);
   const [customFields, setCustomFields] = useState([]);
@@ -84,7 +86,9 @@ export default function ProfileScreen() {
           setTags(tagsData || []);
         });
 
-        fetchAdmins().then(setAdmins).catch(console.error);
+        fetchAdmins().then(setAdmins).catch((err) => {
+          console.warn('[ProfileScreen] Could not fetch admins list (local backend may be offline):', err.message);
+        });
       } catch (error) {
         console.error('Error loading profile:', error);
         Alert.alert('Error', 'Failed to load profile data');
@@ -385,6 +389,23 @@ export default function ProfileScreen() {
             </View>
           </Surface>
         )}
+
+        {/* App Version & Updates Section */}
+        <Surface style={styles.sectionSurface} elevation={1}>
+          <Text variant="titleMedium" style={styles.sectionTitle}>App Version & Updates</Text>
+          <Divider style={styles.divider} />
+          <InfoRow label="Current Version" value="1.1.1" />
+          <Button
+            icon="cloud-refresh"
+            mode="outlined"
+            onPress={() => checkForUpdate(true)}
+            loading={isChecking}
+            disabled={isChecking || isDownloading}
+            style={[styles.actionBtnFull, { marginTop: 12 }]}
+          >
+            Check for Updates
+          </Button>
+        </Surface>
 
         {/* Account Actions Section */}
         <Surface style={styles.sectionSurface} elevation={1}>

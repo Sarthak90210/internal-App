@@ -4,6 +4,7 @@ const { resetMocks, firestoreStore } = require('./setup');
 const { useAuthStore } = require('../src/stores/authStore');
 const { useInventoryStore } = require('../src/stores/inventoryStore');
 const { useTagStore } = require('../src/stores/tagStore');
+const { useUpdateStore } = require('../src/stores/updateStore');
 
 async function testStores() {
   console.log('\n--- Running Store Tests ---');
@@ -103,6 +104,20 @@ async function testStores() {
     useTagStore.getState().cleanup();
     assert.strictEqual(useTagStore.getState().initialized, false);
     assert.strictEqual(useTagStore.getState().tags.length, 0);
+  });
+
+  // UpdateStore tests
+  await runTest('updateStore initial state and dismissPrompt', async () => {
+    const state = useUpdateStore.getState();
+    assert.strictEqual(state.isUpdateAvailable, false);
+    assert.strictEqual(state.isChecking, false);
+    assert.strictEqual(state.isDownloading, false);
+
+    useUpdateStore.setState({ isUpdateAvailable: true });
+    assert.strictEqual(useUpdateStore.getState().isUpdateAvailable, true);
+
+    useUpdateStore.getState().dismissPrompt();
+    assert.strictEqual(useUpdateStore.getState().isUpdateAvailable, false);
   });
 
   return { passed, failed, errors };

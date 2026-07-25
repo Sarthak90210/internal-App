@@ -41,7 +41,9 @@ export default function ManageTeamMembersScreen() {
     const unsubTags = TagsService.subscribeToTags(setTags);
     const unsubFields = CustomFieldsService.subscribeToCustomFields(setCustomFields);
 
-    fetchAdmins().then(setAdmins).catch(console.error);
+    fetchAdmins().then(setAdmins).catch((err) => {
+      console.warn('[ManageTeamMembersScreen] Could not fetch admins list (local backend may be offline):', err.message);
+    });
     setLoading(false);
 
     return () => {
@@ -183,7 +185,9 @@ export default function ManageTeamMembersScreen() {
       await syncUserPermissions(email, finalTags, tags, currentAdmins);
       
       // Refresh admins list
-      fetchAdmins().then(setAdmins).catch(console.error);
+      fetchAdmins().then(setAdmins).catch((err) => {
+        console.warn('[ManageTeamMembersScreen] Could not fetch admins list (local backend may be offline):', err.message);
+      });
       
       setModalVisible(false);
       Alert.alert('Success', `User ${isEditing ? 'updated' : 'added'} successfully.`);

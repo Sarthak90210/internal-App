@@ -210,6 +210,12 @@ const mockModules = {
     Menu: mockComponent('Menu'),
   },
   '@expo/vector-icons/MaterialCommunityIcons': mockComponent('MaterialCommunityIcons'),
+  'expo-updates': {
+    isEnabled: false,
+    checkForUpdateAsync: async () => ({ isAvailable: false }),
+    fetchUpdateAsync: async () => ({ isNew: false }),
+    reloadAsync: async () => {},
+  },
   '@react-navigation/native': {
     NavigationContainer: mockComponent('NavigationContainer'),
     DarkTheme: {
