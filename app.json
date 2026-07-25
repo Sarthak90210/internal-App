@@ -2,23 +2,28 @@
   "expo": {
     "name": "RFV",
     "slug": "App",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "app",
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.teamrotor.app",
-      "icon": "./assets/images/icon.png"
+      "icon": "./assets/images/icon.png",
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "android": {
       "package": "com.teamrotor.app",
+      "versionCode": 10,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "runtimeVersion": "1.1.0"
     },
     "web": {
       "output": "static",
@@ -45,6 +50,9 @@
       "eas": {
         "projectId": "3723ae93-3dfe-4f79-980c-b3754e4168ee"
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3723ae93-3dfe-4f79-980c-b3754e4168ee"
     }
   }
 }

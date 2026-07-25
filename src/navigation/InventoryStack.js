@@ -15,12 +15,13 @@ export default function InventoryStack() {
   return (
     <Stack.Navigator
       screenOptions={{
+        headerShown: true,
         headerStyle: { backgroundColor: theme.colors.surface },
         headerTintColor: theme.colors.onSurface,
         headerShadowVisible: false,
       }}
     >
-      <Stack.Screen name="InventoryLists" component={InventoryListsScreen} options={{ title: 'Inventory Lists' }} />
+      <Stack.Screen name="InventoryLists" component={InventoryListsScreen} options={{ title: 'Inventory Lists', headerShown: false }} />
       <Stack.Screen name="InventoryDetail" component={InventoryDetailScreen} options={{ title: 'Inventory' }} />
       <Stack.Screen name="FolderDetail" component={FolderDetailScreen} options={{ title: 'Folder' }} />
       <Stack.Screen name="ItemDetail" component={ItemDetailScreen} options={{ title: 'Item Detail' }} />

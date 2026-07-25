@@ -1,13 +1,15 @@
-import React, { useEffect, useState } from 'react';
-import { View, FlatList, StyleSheet, Alert } from 'react-native';
-import { Searchbar, FAB, List, useTheme, Text, ActivityIndicator, Dialog, Portal, TextInput, Button, IconButton, SegmentedButtons } from 'react-native-paper';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, FlatList, StyleSheet, Alert, Animated, Pressable } from 'react-native';
+import { FAB, List, useTheme, Text, ActivityIndicator, Dialog, Portal, TextInput, Button, IconButton } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { InventoryService } from '../../services/inventory';
 import { UsersService } from '../../services/users';
 import { useAuthStore } from '../../stores/authStore';
 
 export default function InventoryListsScreen({ navigation }) {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const [lists, setLists] = useState([]);
   const [allInvs, setAllInvs] = useState([]);
   const [allItems, setAllItems] = useState([]);
@@ -18,9 +20,14 @@ export default function InventoryListsScreen({ navigation }) {
   const [isAddDialogVisible, setIsAddDialogVisible] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [activeTab, setActiveTab] = useState('active');
+  const intro = useRef(new Animated.Value(0)).current;
 
   const { hasPermission } = useAuthStore();
   const hasInventoryPermission = hasPermission('inventory');
+
+  useEffect(() => {
+    Animated.timing(intro, { toValue: 1, duration: 650, useNativeDriver: true }).start();
+  }, [intro]);
 
   useEffect(() => {
     if (!hasInventoryPermission) {
@@ -107,29 +114,31 @@ export default function InventoryListsScreen({ navigation }) {
 
   const renderNormalView = () => (
     <>
-      <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>
-        <SegmentedButtons
-          value={activeTab}
-          onValueChange={setActiveTab}
-          buttons={[
-            { value: 'active', label: 'Active' },
-            { value: 'archived', label: 'Archived' },
-          ]}
-          style={{ transform: [{ scale: 0.95 }] }}
-        />
+      <View style={styles.filterRow}>
+        <Pressable onPress={() => setActiveTab('active')} style={[styles.filterPill, activeTab === 'active' && { backgroundColor: theme.colors.primary }]}>
+          <Text style={[styles.filterText, activeTab === 'active' && { color: theme.colors.onPrimary }]}>Active</Text>
+        </Pressable>
+        <Pressable onPress={() => setActiveTab('archived')} style={[styles.filterPill, activeTab === 'archived' && { backgroundColor: theme.colors.primary }]}>
+          <Text style={[styles.filterText, activeTab === 'archived' && { color: theme.colors.onPrimary }]}>Archived</Text>
+        </Pressable>
       </View>
       <FlatList
         data={filteredLists}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 80 }}
-        renderItem={({ item }) => (
-          <List.Item
-            title={item.name || 'Unnamed List'}
-            description={getArchivedDescription(item)}
-            titleStyle={{ color: theme.colors.onSurface, fontWeight: 'bold' }}
-            style={[{ backgroundColor: theme.colors.surface, marginHorizontal: 16, marginVertical: 6, borderRadius: 8, elevation: 1 }, item.isArchived && { opacity: 0.7 }]}
-            left={props => <List.Icon {...props} icon={item.isArchived ? "archive" : "format-list-bulleted-type"} color={item.isArchived ? theme.colors.onSurfaceVariant : theme.colors.primary} />}
-            right={props => (
+        contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}
+        renderItem={({ item, index }) => (
+          <Animated.View style={{ opacity: intro, transform: [{ translateY: intro.interpolate({ inputRange: [0, 1], outputRange: [18 + index * 2, 0] }) }] }}>
+            <Pressable
+              onPress={() => navigation.navigate('InventoryDetail', { listId: item.id, listName: item.name })}
+              style={({ pressed }) => [styles.listCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outline, opacity: item.isArchived ? 0.65 : pressed ? 0.76 : 1 }]}
+            >
+              <View style={[styles.listIcon, { backgroundColor: item.isArchived ? theme.colors.surfaceVariant : theme.colors.primaryContainer }]}>
+                <MaterialCommunityIcons name={item.isArchived ? 'archive-outline' : 'format-list-bulleted-type'} size={21} color={item.isArchived ? theme.colors.onSurfaceVariant : theme.colors.primary} />
+              </View>
+              <View style={styles.listCopy}>
+                <Text variant="titleMedium" style={styles.listTitle}>{item.name || 'Unnamed List'}</Text>
+                <Text variant="bodySmall" style={styles.listDescription}>{getArchivedDescription(item) || 'Inventory collection'}</Text>
+              </View>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 {item.isArchived ? (
                   <IconButton icon="archive-arrow-up" size={20} iconColor={theme.colors.primary} onPress={() => handleArchiveToggle(item, false)} />
@@ -137,11 +146,10 @@ export default function InventoryListsScreen({ navigation }) {
                   <IconButton icon="archive-arrow-down" size={20} iconColor={theme.colors.error} onPress={() => handleArchiveToggle(item, true)} />
                 )}
                 <IconButton icon="trash-can-outline" size={20} iconColor={theme.colors.error} onPress={() => handleDeleteList(item)} />
-                <List.Icon {...props} icon="chevron-right" color={theme.colors.onSurfaceVariant} />
+                <MaterialCommunityIcons name="chevron-right" size={22} color={theme.colors.onSurfaceVariant} />
               </View>
-            )}
-            onPress={() => navigation.navigate('InventoryDetail', { listId: item.id, listName: item.name })}
-          />
+            </Pressable>
+          </Animated.View>
         )}
         ListEmptyComponent={
           <Text style={{ textAlign: 'center', marginTop: 20, color: theme.colors.onSurfaceVariant }}>
@@ -170,7 +178,7 @@ export default function InventoryListsScreen({ navigation }) {
       <FlatList
         data={combined}
         keyExtractor={(item) => item._type + '_' + item.id}
-        contentContainerStyle={{ paddingBottom: 80, paddingTop: 8 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 96, paddingTop: 8 }}
         renderItem={({ item }) => {
           let icon = "help-circle";
           let color = theme.colors.onSurfaceVariant;
@@ -226,7 +234,7 @@ export default function InventoryListsScreen({ navigation }) {
 
   if (!hasInventoryPermission) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+      <View style={[styles.container, { backgroundColor: theme.colors.background, paddingTop: insets.top, paddingBottom: insets.bottom, justifyContent: 'center', alignItems: 'center' }]}> 
         <MaterialCommunityIcons name="shield-lock-outline" size={80} color={theme.colors.error} style={{ marginBottom: 16 }} />
         <Text variant="headlineSmall" style={{ color: theme.colors.onBackground, marginBottom: 8, fontWeight: 'bold' }}>Access Denied</Text>
         <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center', paddingHorizontal: 32 }}>
@@ -237,13 +245,24 @@ export default function InventoryListsScreen({ navigation }) {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Searchbar
-        placeholder={searchQuery ? "Global Search..." : `Search ${activeTab} lists globally...`}
-        onChangeText={setSearchQuery}
-        value={searchQuery}
-        style={[styles.searchbar, { backgroundColor: theme.colors.surface }]}
-      />
+      <View style={[styles.container, { backgroundColor: theme.colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }]}> 
+      <View style={styles.hero}>
+        <Text variant="headlineMedium" style={styles.heroTitle}>Inventory Lists</Text>
+      </View>
+      <View style={[styles.searchBox, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outline }]}>
+        <MaterialCommunityIcons name="magnify" size={22} color={theme.colors.onSurfaceVariant} />
+        <TextInput
+          placeholder={searchQuery ? "Global Search..." : `Search ${activeTab} lists globally...`}
+          placeholderTextColor={theme.colors.onSurfaceVariant}
+          onChangeText={setSearchQuery}
+          value={searchQuery}
+          style={styles.searchInput}
+          underlineColor="transparent"
+          activeUnderlineColor="transparent"
+          mode="flat"
+        />
+        {searchQuery.length > 0 && <IconButton icon="close" size={18} onPress={() => setSearchQuery('')} />}
+      </View>
       
       {loading ? (
         <ActivityIndicator style={{ marginTop: 20 }} color={theme.colors.primary} />
@@ -252,9 +271,9 @@ export default function InventoryListsScreen({ navigation }) {
       )}
 
       {activeTab === 'active' && (
-        <FAB
+          <FAB
           icon="plus"
-          style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+          style={[styles.fab, { backgroundColor: theme.colors.primary, bottom: insets.bottom + 12 }]}
           color={theme.colors.onPrimary}
           onPress={() => setIsAddDialogVisible(true)}
         />
@@ -284,6 +303,17 @@ export default function InventoryListsScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  searchbar: { marginHorizontal: 16, marginBottom: 8, borderRadius: 12 },
-  fab: { position: 'absolute', margin: 16, right: 0, bottom: 0, borderRadius: 16 },
+  hero: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  heroTitle: { color: '#F4F6F8', fontWeight: '900', letterSpacing: -0.5 },
+  searchBox: { marginHorizontal: 20, marginBottom: 4, borderRadius: 18, borderWidth: 1, minHeight: 54, paddingLeft: 14, flexDirection: 'row', alignItems: 'center' },
+  searchInput: { flex: 1, height: 52, backgroundColor: 'transparent', paddingHorizontal: 8 },
+  filterRow: { flexDirection: 'row', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, gap: 10 },
+  filterPill: { minWidth: 112, height: 42, paddingHorizontal: 15, borderRadius: 15, backgroundColor: '#171B23', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#252C36' },
+  filterText: { color: '#AAB2BE', fontWeight: '800', fontSize: 13 },
+  listCard: { marginHorizontal: 16, marginVertical: 6, borderRadius: 20, borderWidth: 1, padding: 12, flexDirection: 'row', alignItems: 'center' },
+  listIcon: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  listCopy: { flex: 1 },
+  listTitle: { color: '#F4F6F8', fontWeight: '800' },
+  listDescription: { color: '#9DA5B2', marginTop: 3 },
+  fab: { position: 'absolute', margin: 16, right: 0, bottom: 0, borderRadius: 18 },
 });

@@ -24,7 +24,15 @@ function MainTabs() {
       initialRouteName="InventoryTab"
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarStyle: { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.surfaceVariant },
+        tabBarStyle: {
+          backgroundColor: theme.colors.surface,
+          borderTopColor: theme.colors.outline,
+          height: 72,
+          paddingBottom: 10,
+          paddingTop: 8,
+        },
+        tabBarItemStyle: { borderRadius: 18, marginHorizontal: 5 },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: theme.colors.onSurfaceDisabled,
         tabBarIcon: ({ color, size }) => {
@@ -32,7 +40,7 @@ function MainTabs() {
           if (route.name === 'InventoryTab') iconName = 'format-list-bulleted';
           else if (route.name === 'AdminTab') iconName = 'shield-account';
           else if (route.name === 'ProfileTab') iconName = 'account';
-          return <MaterialCommunityIcons name={iconName} size={size} color={color} />;
+          return <MaterialCommunityIcons name={iconName} size={size + 1} color={color} />;
         },
       })}
     >

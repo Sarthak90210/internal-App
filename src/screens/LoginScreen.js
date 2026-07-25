@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet, Alert, Image } from 'react-native';
 import { Button, Text, ActivityIndicator, useTheme } from 'react-native-paper';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
@@ -59,16 +59,14 @@ export default function LoginScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Image 
+      <View style={styles.brandMark}>
+        <Image 
         source={require('../../assets/images/logo.png')} 
-        style={{ width: 100, height: 100, marginBottom: 16, resizeMode: 'contain' }} 
-      />
-      <Text variant="headlineMedium" style={{ color: theme.colors.onBackground, fontWeight: 'bold', marginBottom: 10 }}>
-        RFV
-      </Text>
-      <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 40 }}>
-        Internal Management App
-      </Text>
+        style={styles.logo} 
+        />
+      </View>
+      <Text variant="headlineMedium" style={[styles.title, { color: theme.colors.onBackground }]}>RFV</Text>
+      <Text variant="bodyLarge" style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}>Internal Management App</Text>
       
       {loading ? (
         <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -77,7 +75,9 @@ export default function LoginScreen() {
           mode="contained" 
           onPress={handleGoogleLogin} 
           icon="google" 
-          style={{ borderRadius: 8 }}
+          style={styles.button}
+          contentStyle={styles.buttonContent}
+          labelStyle={styles.buttonLabel}
         >
           Sign in with Google
         </Button>
@@ -91,6 +91,24 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 28,
+    overflow: 'hidden',
   },
+  brandMark: {
+    width: 112,
+    height: 112,
+    borderRadius: 36,
+    backgroundColor: '#151A20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 26,
+    borderWidth: 1,
+    borderColor: '#2B3340',
+  },
+  logo: { width: 76, height: 76, resizeMode: 'contain' },
+  title: { fontWeight: '900', letterSpacing: 1.5, marginBottom: 8 },
+  subtitle: { marginBottom: 42 },
+  button: { borderRadius: 16, width: '100%' },
+  buttonContent: { height: 56 },
+  buttonLabel: { fontWeight: '800', letterSpacing: 0.4 },
 });
