@@ -1,11 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { View, ScrollView, StyleSheet, Alert } from 'react-native';
-import { Text, TextInput, Button, Card, useTheme, ActivityIndicator, Divider } from 'react-native-paper';
+import { Text } from 'react-native-paper';
+import { Video, Upload, RotateCcw, FileText, Clock } from '../../lib/lucideIcons';
 import { doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { uploadFile, deleteCloudinaryImage, logAdminAction } from '../../services/adminApi';
+import { deleteCloudinaryImage, logAdminAction } from '../../services/adminApi';
+import { pickAndUploadMedia } from '../../lib/mediaUpload';
 import { useAuthStore } from '../../stores/authStore';
-import * as ImagePicker from 'expo-image-picker';
+import { 
+  AppSection, 
+  AppCard, 
+  AppInput, 
+  AppButton, 
+  AppBadge 
+} from '../../components/design-system';
+import { appColors, appRadius, appSpacing, appTypography } from '../../theme';
 
 const EMPTY_SETTINGS = {
   backgroundVideoUrl: '',
@@ -14,8 +23,18 @@ const EMPTY_SETTINGS = {
   updatedBy: ''
 };
 
+const isMediaUrl = (value) => {
+  if (typeof value !== 'string') return false;
+
+  const normalized = value.trim().toLowerCase();
+  return normalized.includes('res.cloudinary.com')
+    || normalized.includes('/video/upload/')
+    || normalized.endsWith('.mp4')
+    || normalized.endsWith('.webm')
+    || normalized.endsWith('.mov');
+};
+
 export default function ManageHomeSettingsScreen() {
-  const theme = useTheme();
   const { user } = useAuthStore();
   
   const [homeSettings, setHomeSettings] = useState(EMPTY_SETTINGS);
@@ -31,8 +50,8 @@ export default function ManageHomeSettingsScreen() {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setHomeSettings(data);
-        setHomeVideoUrl(data.backgroundVideoUrl || '');
-        setAboutUs(data.aboutUs || '');
+        setHomeVideoUrl(typeof data.backgroundVideoUrl === 'string' ? data.backgroundVideoUrl : '');
+        setAboutUs(typeof data.aboutUs === 'string' && !isMediaUrl(data.aboutUs) ? data.aboutUs : '');
       } else {
         setHomeSettings(EMPTY_SETTINGS);
         setHomeVideoUrl('');
@@ -45,6 +64,11 @@ export default function ManageHomeSettingsScreen() {
   }, []);
 
   const handleAboutSubmit = async () => {
+    if (isMediaUrl(aboutUs)) {
+      Alert.alert("Invalid About Us Text", "Please enter About Us copy, not a video or Cloudinary URL.");
+      return;
+    }
+
     setIsSavingAbout(true);
     try {
       await setDoc(doc(db, 'settings', 'home'), {
@@ -63,37 +87,24 @@ export default function ManageHomeSettingsScreen() {
   };
 
   const handlePickVideo = async () => {
-    let result;
+    setIsUploading(true);
     try {
-      result = await ImagePicker.launchImageLibraryAsync({
+      const result = await pickAndUploadMedia({
+        folder: 'home',
         mediaTypes: ['videos'],
         allowsEditing: true,
         quality: 1,
       });
-    } catch (error) {
-      console.error("Video picking error:", error);
-      Alert.alert("Error", "Failed to pick video.");
-      return;
-    }
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      const fileUri = result.assets[0].uri;
-      
-      setIsUploading(true);
-      try {
-        const { ok, data: uploadedMedia } = await uploadFile(fileUri, "home");
-        
-        if (ok && uploadedMedia.secure_url) {
-          setHomeVideoUrl(uploadedMedia.secure_url);
-        } else {
-          Alert.alert("Upload Failed", uploadedMedia.error || "Please try again.");
-        }
-      } catch (error) {
-        console.error("Upload error:", error);
-        Alert.alert("Upload Failed", error.message || "Failed to upload video.");
-      } finally {
-        setIsUploading(false);
+      if (result.canceled) return;
+
+      if (result.ok) {
+        setHomeVideoUrl(result.url);
+      } else {
+        Alert.alert('Upload Failed', result.error);
       }
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -161,90 +172,120 @@ export default function ManageHomeSettingsScreen() {
   };
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Card style={styles.card}>
-        <Card.Title title="Background Video" subtitle="Plays in the background of the main home page" />
-        <Card.Content>
-          <View style={styles.uploadSection}>
-            <Button 
-              mode="outlined" 
-              icon="upload" 
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <AppSection title="Home Page Background Video">
+        <AppCard variant="surface" style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.iconBox}>
+              <Video size={20} color="#8B5CF6" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Hero Reel Stream</Text>
+              <Text style={styles.cardSub}>Plays automatically in loop on the public landing screen</Text>
+            </View>
+            {!!homeSettings?.backgroundVideoUrl && (
+              <AppBadge variant="success">Active</AppBadge>
+            )}
+          </View>
+
+          <View style={styles.uploadBox}>
+            <AppButton 
+              variant="secondary" 
+              icon={<Upload size={16} color={appColors.textPrimary} />} 
               onPress={handlePickVideo}
+              loading={isUploading}
               disabled={isUploading || isSavingVideo}
+              style={{ width: '100%' }}
             >
-              {isUploading ? "Uploading..." : "Upload New Video"}
-            </Button>
+              {isUploading ? "Uploading Video File..." : "Upload Video File to Cloud Storage"}
+            </AppButton>
             
-            <Text style={[styles.orText, { color: theme.colors.onSurfaceVariant }]}>or</Text>
-            
-            <TextInput
-              label="Video URL (Cloudinary)"
+            <View style={styles.dividerRow}>
+              <View style={styles.line} />
+              <Text style={styles.orText}>OR DIRECT URL</Text>
+              <View style={styles.line} />
+            </View>
+
+            <AppInput
+              label="Cloudinary Stream URL (.mp4 / .webm)"
               value={homeVideoUrl}
               onChangeText={setHomeVideoUrl}
-              mode="outlined"
-              placeholder="Paste a direct video URL"
-              disabled={isUploading || isSavingVideo}
+              placeholder="https://res.cloudinary.com/..."
+              editable={!isUploading && !isSavingVideo}
             />
           </View>
-          
+
           <View style={styles.actionRow}>
-            <Button 
-              mode="contained" 
-              onPress={handleHomeVideoSubmit}
-              loading={isSavingVideo}
-              disabled={isUploading || isSavingVideo || !homeVideoUrl}
-              style={styles.actionBtn}
-            >
-              Save Video
-            </Button>
-            
             {!!homeSettings?.backgroundVideoUrl && (
-              <Button 
-                mode="outlined" 
-                textColor={theme.colors.error}
-                style={[styles.actionBtn, { borderColor: theme.colors.error }]}
+              <AppButton 
+                variant="ghost" 
+                icon={<RotateCcw size={16} color="#EF4444" />}
+                style={{ flex: 1, marginRight: 8, borderColor: '#EF444450', borderWidth: 1 }}
                 onPress={handleRevertHomeVideo}
                 disabled={isUploading || isSavingVideo}
               >
-                Revert
-              </Button>
+                <Text style={{ color: '#EF4444', ...appTypography.button }}>Revert Default</Text>
+              </AppButton>
             )}
+            <AppButton 
+              variant="primary" 
+              onPress={handleHomeVideoSubmit}
+              loading={isSavingVideo}
+              disabled={isUploading || isSavingVideo || !homeVideoUrl}
+              style={{ flex: 1 }}
+            >
+              Save Video Stream
+            </AppButton>
           </View>
-        </Card.Content>
-      </Card>
+        </AppCard>
+      </AppSection>
 
-      <Card style={[styles.card, { marginBottom: 40 }]}>
-        <Card.Title title="About Us Section" subtitle="Appears below the video on the home page" />
-        <Card.Content>
-          <TextInput
-            label="About Us Text"
-            value={aboutUs}
-            onChangeText={setAboutUs}
-            mode="outlined"
-            multiline
-            numberOfLines={8}
-            placeholder="Tell visitors about Team Rotor FPV..."
-            style={styles.textArea}
-          />
-          
-          <Button 
-            mode="contained" 
-            onPress={handleAboutSubmit}
-            loading={isSavingAbout}
-            disabled={isSavingAbout}
-            style={styles.saveAboutBtn}
-          >
-            Save About Us
-          </Button>
+      <AppSection title="About Us Section & Mission" style={{ marginTop: appSpacing.xl }}>
+        <AppCard variant="surface" style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.iconBox, { backgroundColor: '#A855F715' }]}>
+              <FileText size={20} color="#A855F7" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Team Narrative</Text>
+              <Text style={styles.cardSub}>Displayed below the hero section on the home page</Text>
+            </View>
+          </View>
+
+          <View style={{ marginTop: 12 }}>
+            <AppInput
+              label="About Us Text (Markdown Supported)"
+              value={aboutUs}
+              onChangeText={setAboutUs}
+              multiline
+              numberOfLines={8}
+              placeholder="Tell visitors about Team Rotor FPV, our engineering focus, and drone projects..."
+            />
+          </View>
+
+          <View style={{ marginTop: 16 }}>
+            <AppButton 
+              variant="primary" 
+              onPress={handleAboutSubmit}
+              loading={isSavingAbout}
+              disabled={isSavingAbout}
+              style={{ width: '100%' }}
+            >
+              Save About Us Text
+            </AppButton>
+          </View>
 
           {homeSettings?.updatedAt && (
-            <Text style={[styles.updatedText, { color: theme.colors.onSurfaceVariant }]}>
-              Last updated: {homeSettings.updatedAt.toDate ? homeSettings.updatedAt.toDate().toLocaleString() : 'Recently'}
-              {homeSettings.updatedBy && ` by ${homeSettings.updatedBy}`}
-            </Text>
+            <View style={styles.metaBox}>
+              <Clock size={14} color={appColors.textMuted} style={{ marginRight: 6 }} />
+              <Text style={styles.updatedText}>
+                Last updated: {homeSettings.updatedAt.toDate ? homeSettings.updatedAt.toDate().toLocaleString() : 'Recently'}
+                {homeSettings.updatedBy && ` by ${homeSettings.updatedBy}`}
+              </Text>
+            </View>
           )}
-        </Card.Content>
-      </Card>
+        </AppCard>
+      </AppSection>
     </ScrollView>
   );
 }
@@ -252,35 +293,79 @@ export default function ManageHomeSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
+    backgroundColor: appColors.background,
+  },
+  content: {
+    padding: appSpacing.xl,
+    paddingBottom: 100,
   },
   card: {
-    marginBottom: 20,
+    padding: appSpacing.lg,
   },
-  uploadSection: {
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 16,
   },
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: appRadius.md,
+    backgroundColor: `${appColors.accent}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  cardTitle: {
+    ...appTypography.bodyBold,
+    color: appColors.textPrimary,
+  },
+  cardSub: {
+    ...appTypography.caption,
+    color: appColors.textSecondary,
+    marginTop: 2,
+  },
+  uploadBox: {
+    backgroundColor: appColors.elevatedSurface,
+    padding: appSpacing.lg,
+    borderRadius: appRadius.md,
+    borderWidth: 1,
+    borderColor: appColors.border,
+    marginBottom: 16,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 14,
+  },
+  line: {
+    flex: 1,
+    height: 1,
+    backgroundColor: appColors.border,
+  },
   orText: {
-    textAlign: 'center',
-    marginVertical: 12,
-    fontWeight: 'bold',
+    ...appTypography.captionBold,
+    color: appColors.textMuted,
+    marginHorizontal: 12,
+    fontSize: 10,
+    letterSpacing: 1,
   },
   actionRow: {
     flexDirection: 'row',
-    gap: 10,
+    alignItems: 'center',
   },
-  actionBtn: {
-    flex: 1,
-  },
-  textArea: {
-    minHeight: 120,
-    marginBottom: 16,
-  },
-  saveAboutBtn: {
-    marginBottom: 16,
+  metaBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: appColors.border,
   },
   updatedText: {
-    fontSize: 12,
-    textAlign: 'center',
-  }
+    ...appTypography.caption,
+    color: appColors.textMuted,
+    fontSize: 11,
+  },
 });

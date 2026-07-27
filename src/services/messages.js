@@ -15,7 +15,7 @@ export const MessagesService = {
     });
   },
 
-  updateMessageStatus: async (id, newStatus, userName, userEmail) => {
+  updateMessageStatus: async (id, newStatus) => {
     await updateDoc(doc(db, 'contact_messages', id), { status: newStatus });
     await logAdminAction(
       newStatus === 'read' ? 'Marked as Read' : 'Marked as Unread',

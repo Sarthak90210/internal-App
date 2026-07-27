@@ -50,7 +50,8 @@ APK_SOURCE="app/build/outputs/apk/release/app-release.apk"
 if [ -f "$APK_SOURCE" ]; then
   DEST_DIR="../APK Builds"
   mkdir -p "$DEST_DIR"
-  DEST_FILE="$DEST_DIR/RFV_Internal_App_V1.1.1.apk"
+  APP_VERSION=$(node -p "require('../package.json').version" 2>/dev/null || echo "unknown")
+  DEST_FILE="$DEST_DIR/RFV_Internal_App_V${APP_VERSION}.apk"
   cp "$APK_SOURCE" "$DEST_FILE"
   echo "SUCCESS! APK built and copied to: $DEST_FILE"
   ls -lh "$DEST_FILE"

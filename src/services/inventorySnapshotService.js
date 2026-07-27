@@ -169,7 +169,7 @@ export const getInventorySnapshot = async (filter = {}) => {
     historyByItem[itemId].sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
   });
 
-  const context = { lists: allLists, inventories, items, usersMap, historyByItem };
+  const context = { inventories, usersMap, historyByItem };
 
   const listMap = {};
   allLists.forEach(l => { listMap[l.id] = l; });
@@ -213,7 +213,11 @@ export const getInventorySnapshot = async (filter = {}) => {
     const parentList = listMap[resolvedListId] || { id: 'unassigned_standalone', name: 'Unassigned List' };
     const listDisplayName = parentList.isArchived ? `${parentList.name} (Archived)` : parentList.name;
 
-    const pathArray = parentInv.parentInventoryId || (parentInv.id !== parentList.id)
+    // Parenthesised for clarity: `||` binds tighter than `?:`, so the whole
+    // disjunction is the condition. An item sitting at the root of a list has
+    // no real inventory to walk, so its path is just the list name.
+    const isNestedUnderInventory = Boolean(parentInv.parentInventoryId) || parentInv.id !== parentList.id;
+    const pathArray = isNestedUnderInventory
       ? resolveInventoryPathArray(parentInv.id, context)
       : [parentList.name];
     const pathString = pathArray.join(' > ');

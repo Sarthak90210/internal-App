@@ -1,11 +1,23 @@
 import React, { useEffect, useState } from 'react';
-import { View, FlatList, StyleSheet, Alert, Modal, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { List, FAB, useTheme, ActivityIndicator, Text, Button, TextInput, Switch, IconButton, Divider } from 'react-native-paper';
-import * as ImagePicker from 'expo-image-picker';
+import { View, FlatList, StyleSheet, Alert, Image, Switch } from 'react-native';
+import { Text } from 'react-native-paper';
+import { Calendar, Image as ImageIcon, CheckCircle2, Eye, EyeOff } from '../../lib/lucideIcons';
 import { EventsService } from '../../services/events';
 import { useAuthStore } from '../../stores/authStore';
-import { uploadFile } from '../../services/adminApi';
+import { pickAndUploadMedia, buildFolder } from '../../lib/mediaUpload';
+import { 
+  AppListItem, 
+  AppFAB, 
+  AppModal, 
+  AppInput, 
+  AppButton, 
+  AppBadge, 
+  AppSkeleton, 
+  AppEmptyState,
+  AppSection,
+  AppCard
+} from '../../components/design-system';
+import { appColors, appRadius, appSpacing, appTypography } from '../../theme';
 
 const EMPTY_EVENT = {
   name: '',
@@ -19,7 +31,6 @@ const EMPTY_EVENT = {
 };
 
 export default function ManageEventsScreen() {
-  const theme = useTheme();
   const { user } = useAuthStore();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -59,7 +70,7 @@ export default function ManageEventsScreen() {
   };
 
   const handleDelete = (item) => {
-    Alert.alert('Confirm Delete', `Are you sure you want to delete ${item.name}?`, [
+    Alert.alert('Confirm Delete', `Are you sure you want to permanently delete "${item.name}"?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => EventsService.deleteEvent(item) }
     ]);
@@ -67,37 +78,31 @@ export default function ManageEventsScreen() {
 
   const handlePickImage = async () => {
     if (!formData.name) {
-      Alert.alert('Required', 'Please enter an event name first so we can create a folder for it.');
+      Alert.alert('Required', 'Please enter an event name first so we can create a designated storage folder for it.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-    });
+    setIsSaving(true);
+    try {
+      const result = await pickAndUploadMedia({
+        folder: buildFolder('events', formData.status, formData.name),
+        allowsEditing: false,
+      });
 
-    if (!result.canceled && result.assets.length > 0) {
-      const uri = result.assets[0].uri;
-      setIsSaving(true);
-      try {
-        const safeName = formData.name.trim().replace(/\s+/g, '-');
-        const folder = `events/${formData.status}/${safeName}`;
-        const { ok, data } = await uploadFile(uri, folder);
-        if (ok && data.secure_url) {
-          setFormData(prev => ({ ...prev, image: data.secure_url }));
-        } else {
-          Alert.alert('Upload Failed', data.error || 'Failed to upload image');
-        }
-      } catch (err) {
-        Alert.alert('Error', err.message);
-      } finally {
-        setIsSaving(false);
+      if (result.canceled) return;
+
+      if (result.ok) {
+        setFormData(prev => ({ ...prev, image: result.url }));
+      } else {
+        Alert.alert('Upload Failed', result.error);
       }
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleSave = async () => {
     if (!formData.name || !formData.image) {
-      Alert.alert('Required', 'Name and Image are required.');
+      Alert.alert('Required', 'Event Name and Cover Image are required fields.');
       return;
     }
     
@@ -113,142 +118,266 @@ export default function ManageEventsScreen() {
       }
       setModalVisible(false);
     } catch (err) {
-      Alert.alert('Error', 'Failed to save event');
+      Alert.alert('Error', 'Failed to save event details');
     } finally {
       setIsSaving(false);
     }
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <View style={styles.container}>
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 20 }} color={theme.colors.primary} />
+        <View style={styles.loadingContainer}>
+          <AppSkeleton width="100%" height={80} style={{ marginBottom: 12 }} />
+          <AppSkeleton width="100%" height={80} style={{ marginBottom: 12 }} />
+          <AppSkeleton width="100%" height={80} />
+        </View>
       ) : (
         <FlatList
+          keyboardShouldPersistTaps="handled"
           data={events}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingBottom: 80 }}
-          renderItem={({ item }) => (
-            <List.Item
-              title={item.name || 'Unnamed Event'}
-              description={`${item.status.toUpperCase()} | Order: ${item.order}`}
-              titleStyle={{ color: theme.colors.onSurface }}
-              descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
-              style={{ backgroundColor: theme.colors.surface, marginHorizontal: 16, marginVertical: 6, borderRadius: 8 }}
-              left={props => <List.Icon {...props} icon="calendar" color={item.isActive ? theme.colors.primary : theme.colors.error} />}
-              right={props => (
-                <View style={{ flexDirection: 'row' }}>
-                  <IconButton icon="pencil" iconColor={theme.colors.primary} onPress={() => openEditModal(item)} />
-                  <IconButton icon="delete" iconColor={theme.colors.error} onPress={() => handleDelete(item)} />
-                </View>
-              )}
-            />
-          )}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => {
+            const badgeVariant = !item.isActive ? "danger" : (item.status === 'upcoming' ? "success" : "secondary");
+            const statusLabel = !item.isActive ? "Hidden" : item.status.toUpperCase();
+
+            return (
+              <AppListItem
+                title={item.name || 'Unnamed Event'}
+                description={`${item.description || 'No description'} • Order #${item.order}`}
+                leftIcon={
+                  item.image ? (
+                    <Image source={{ uri: item.image }} style={styles.thumbImage} />
+                  ) : (
+                    <View style={styles.iconBox}>
+                      <Calendar size={18} color="#38BDF8" />
+                    </View>
+                  )
+                }
+                rightElement={
+                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                    <AppBadge variant={badgeVariant}>{statusLabel}</AppBadge>
+                  </View>
+                }
+                onPress={() => openEditModal(item)}
+                onDelete={() => handleDelete(item)}
+              />
+            );
+          }}
           ListEmptyComponent={
-            <Text style={{ textAlign: 'center', marginTop: 20, color: theme.colors.onSurfaceVariant }}>
-              No events found.
-            </Text>
+            <AppEmptyState
+              title="No events scheduled"
+              description="You haven't created any upcoming or past events for the website yet."
+              actionLabel="Add First Event"
+              onAction={openAddModal}
+            />
           }
         />
       )}
-      <FAB
-        icon="plus"
-        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
-        color={theme.colors.onPrimary}
+
+      <AppFAB
+        label="New Event"
         onPress={openAddModal}
       />
 
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalVisible(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
-          <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface }]}>
-            <IconButton icon="close" onPress={() => setModalVisible(false)} />
-            <Text variant="titleLarge">{editingId ? 'Edit Event' : 'Add Event'}</Text>
-            <Button disabled={isSaving} onPress={handleSave}>Save</Button>
+      <AppModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        title={editingId ? 'Edit Event Specification' : 'Create New Event'}
+        footer={
+          <View style={styles.modalFooter}>
+            <AppButton variant="ghost" onPress={() => setModalVisible(false)} style={{ flex: 1, marginRight: 8 }} disabled={isSaving}>
+              Cancel
+            </AppButton>
+            <AppButton variant="primary" onPress={handleSave} style={{ flex: 1 }} loading={isSaving}>
+              Save Event
+            </AppButton>
           </View>
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
-            <TextInput
-              label="Name"
-              value={formData.name}
-              onChangeText={t => setFormData({...formData, name: t})}
-              style={styles.input}
-              mode="outlined"
-            />
-            <TextInput
-              label="Status (upcoming / past)"
-              value={formData.status}
-              onChangeText={t => setFormData({...formData, status: t})}
-              style={styles.input}
-              mode="outlined"
-            />
-            <TextInput
-              label="Short Description"
-              value={formData.description}
-              onChangeText={t => setFormData({...formData, description: t})}
-              style={styles.input}
-              mode="outlined"
-              multiline
-            />
-            <TextInput
-              label="Long Description"
-              value={formData.longDescription}
-              onChangeText={t => setFormData({...formData, longDescription: t})}
-              style={styles.input}
-              mode="outlined"
-              multiline
-            />
-            <TextInput
-              label="Order"
-              value={String(formData.order)}
-              onChangeText={t => setFormData({...formData, order: t})}
-              style={styles.input}
-              mode="outlined"
-              keyboardType="numeric"
-            />
-            
-            <View style={styles.switchRow}>
-              <Text>Active (visible on website)</Text>
-              <Switch value={formData.isActive} onValueChange={v => setFormData({...formData, isActive: v})} />
-            </View>
+        }
+      >
+        <AppInput
+          label="Event Name"
+          value={formData.name}
+          onChangeText={t => setFormData({...formData, name: t})}
+          placeholder="e.g. AUVSI SUAS 2026 or Drone Racing League"
+        />
+        <View style={{ marginTop: 16 }}>
+          <AppInput
+            label="Status"
+            value={formData.status}
+            onChangeText={t => setFormData({...formData, status: t})}
+            placeholder="upcoming or past"
+          />
+        </View>
+        <View style={{ marginTop: 16 }}>
+          <AppInput
+            label="Display Order (priority)"
+            value={String(formData.order)}
+            onChangeText={t => setFormData({...formData, order: t})}
+            keyboardType="numeric"
+            placeholder="0"
+          />
+        </View>
+        <View style={{ marginTop: 16 }}>
+          <AppInput
+            label="Short Summary"
+            value={formData.description}
+            onChangeText={t => setFormData({...formData, description: t})}
+            placeholder="Brief overview displayed on event cards"
+            multiline
+            numberOfLines={2}
+          />
+        </View>
+        <View style={{ marginTop: 16 }}>
+          <AppInput
+            label="Detailed Description"
+            value={formData.longDescription}
+            onChangeText={t => setFormData({...formData, longDescription: t})}
+            placeholder="Full event details and schedule"
+            multiline
+            numberOfLines={4}
+          />
+        </View>
 
-            <Divider style={{ marginVertical: 16 }} />
-            
-            <Text variant="titleMedium">Cover Image</Text>
+        <View style={styles.switchBox}>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {formData.isActive ? <Eye size={16} color="#10B981" style={{ marginRight: 6 }} /> : <EyeOff size={16} color="#EF4444" style={{ marginRight: 6 }} />}
+              <Text style={styles.switchTitle}>Publicly Visible</Text>
+            </View>
+            <Text style={styles.switchSub}>When disabled, this event is hidden from the public website.</Text>
+          </View>
+          <Switch 
+            value={formData.isActive} 
+            onValueChange={v => setFormData({...formData, isActive: v})}
+            trackColor={{ false: appColors.border, true: appColors.accent }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
+
+        <AppSection title="Cover Banner" style={{ marginTop: appSpacing.xl }}>
+          <AppCard variant="surface" style={styles.imageCard}>
             {formData.image ? (
-              <Text style={{ color: theme.colors.success, marginVertical: 8 }}>Image Uploaded Successfully</Text>
-            ) : null}
-            <Button mode="outlined" onPress={handlePickImage} loading={isSaving} disabled={isSaving} style={{ marginTop: 8 }}>
-              {formData.image ? 'Change Cover Image' : 'Upload Cover Image'}
-            </Button>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
+              <View style={styles.imagePreviewWrap}>
+                <Image source={{ uri: formData.image }} style={styles.bannerPreview} />
+                <View style={styles.imageSuccessBadge}>
+                  <CheckCircle2 size={14} color="#10B981" style={{ marginRight: 4 }} />
+                  <Text style={styles.imageSuccessText}>Uploaded to Cloud Storage</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.imagePlaceholder}>
+                <ImageIcon size={32} color={appColors.textMuted} />
+                <Text style={styles.imageHelper}>No cover image uploaded yet.</Text>
+              </View>
+            )}
+            <AppButton 
+              variant="secondary" 
+              onPress={handlePickImage} 
+              loading={isSaving} 
+              disabled={isSaving}
+              style={{ marginTop: 12 }}
+              icon={<ImageIcon size={16} color={appColors.textPrimary} />}
+            >
+              {formData.image ? 'Replace Cover Image' : 'Upload Cover Banner'}
+            </AppButton>
+          </AppCard>
+        </AppSection>
+      </AppModal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  fab: {
-    position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 16,
-    borderRadius: 16,
+  container: { 
+    flex: 1,
+    backgroundColor: appColors.background, 
   },
-  modalHeader: {
+  loadingContainer: {
+    padding: appSpacing.xl,
+  },
+  listContent: {
+    padding: appSpacing.xl,
+    paddingBottom: 100,
+  },
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: appRadius.md,
+    backgroundColor: '#38BDF815',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  thumbImage: {
+    width: 44,
+    height: 44,
+    borderRadius: appRadius.md,
+    backgroundColor: appColors.elevatedSurface,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  switchBox: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 8,
-    elevation: 4
+    backgroundColor: appColors.surface,
+    borderWidth: 1,
+    borderColor: appColors.border,
+    padding: appSpacing.lg,
+    borderRadius: appRadius.md,
+    marginTop: 20,
   },
-  input: {
-    marginBottom: 12
+  switchTitle: {
+    ...appTypography.bodyBold,
+    color: appColors.textPrimary,
   },
-  switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  switchSub: {
+    ...appTypography.caption,
+    color: appColors.textSecondary,
+    marginTop: 2,
+  },
+  imageCard: {
+    padding: appSpacing.lg,
     alignItems: 'center',
-    marginTop: 8
-  }
+  },
+  imagePreviewWrap: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  bannerPreview: {
+    width: '100%',
+    height: 140,
+    borderRadius: appRadius.md,
+    backgroundColor: appColors.background,
+  },
+  imageSuccessBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  imageSuccessText: {
+    ...appTypography.captionBold,
+    color: '#10B981',
+  },
+  imagePlaceholder: {
+    width: '100%',
+    height: 120,
+    borderRadius: appRadius.md,
+    borderWidth: 1,
+    borderColor: appColors.border,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: `${appColors.background}80`,
+  },
+  imageHelper: {
+    ...appTypography.caption,
+    color: appColors.textMuted,
+    marginTop: 8,
+  },
 });
+

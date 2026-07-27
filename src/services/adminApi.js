@@ -90,15 +90,6 @@ export async function moveCloudinaryImage(url, toFolder) {
   }
 }
 
-export async function apiGet(path) {
-  const idToken = await getIdToken();
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: { Authorization: `Bearer ${idToken}` },
-  });
-  const data = await res.json().catch(() => ({}));
-  return { ok: res.ok, data };
-}
-
 export async function logAdminAction(actionType, targetType, details) {
   try {
     if (!auth.currentUser) return;

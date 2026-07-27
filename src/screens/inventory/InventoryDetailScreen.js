@@ -1,26 +1,43 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { View, FlatList, StyleSheet, Alert, TouchableOpacity } from 'react-native';
-import { Searchbar, List, useTheme, Text, ActivityIndicator, Button, Checkbox, IconButton, Portal, Dialog, TextInput, FAB } from 'react-native-paper';
+import React, { useEffect, useState } from 'react';
+import { View, FlatList, StyleSheet, Alert, Pressable } from 'react-native';
+import { Text } from 'react-native-paper';
+import { 
+  Folder, 
+  Box, 
+  User, 
+  Download, 
+  CheckSquare, 
+  Square, 
+  X, 
+  ArrowRightLeft 
+} from '../../lib/lucideIcons';
 import { InventoryService } from '../../services/inventory';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useAuthStore } from '../../stores/authStore';
 import { UsersService } from '../../services/users';
 import MoveDestinationModal from '../../components/MoveDestinationModal';
 import ExportModal from '../../components/ExportModal';
-
-const getRelativeTime = (timestamp) => {
-  if (!timestamp) return '';
-  const seconds = timestamp.seconds || (new Date(timestamp).getTime() / 1000);
-  const diff = Math.floor(Date.now() / 1000 - seconds);
-  if (diff < 60) return 'Just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-  if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
-  return `${Math.floor(diff / 604800)}w`;
-};
+import { 
+  AppSearchBar, 
+  AppListItem, 
+  AppFAB, 
+  AppModal, 
+  AppInput, 
+  AppButton, 
+  AppBadge, 
+  AppSkeleton, 
+  AppEmptyState 
+} from '../../components/design-system';
+import { appColors, appRadius, appSpacing, appTypography } from '../../theme';
+import {
+  getRelativeTime,
+  getHolderName,
+  calculateDescendantItemCount,
+  getStatusBadgeVariant,
+  resolveStatus,
+  toggleInSet,
+  toggleSelectAll,
+} from '../../lib/inventoryHelpers';
 
 export default function InventoryDetailScreen({ route, navigation }) {
-  const theme = useTheme();
   const { listId, listName } = route.params;
   const [inventories, setInventories] = useState([]);
   const [allItems, setAllItems] = useState([]);
@@ -33,7 +50,7 @@ export default function InventoryDetailScreen({ route, navigation }) {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedInventories, setSelectedInventories] = useState(new Set());
 
-  const [isAddDialogVisible, setIsAddDialogVisible] = useState(false);
+  const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [newInventoryName, setNewInventoryName] = useState('');
   
   const [isMoveModalVisible, setIsMoveModalVisible] = useState(false);
@@ -46,7 +63,6 @@ export default function InventoryDetailScreen({ route, navigation }) {
       setLoading(false);
     });
     
-    // Subscribe to all inventories and items to calculate descendants effectively
     const unsubscribeAllInvs = InventoryService.subscribeToAllInventories((data) => setAllInvs(data));
     const unsubscribeLists = InventoryService.subscribeToLists((data) => setLists(data));
     const unsubscribeAllItems = InventoryService.subscribeToAllItems((data) => setAllItems(data));
@@ -63,79 +79,64 @@ export default function InventoryDetailScreen({ route, navigation }) {
 
   const topLevelInventories = inventories.filter(i => !i.parentInventoryId);
 
-  const getHolderName = (email) => {
-    if (!email) return 'None';
-    const userObj = usersList.find(u => u.email === email);
-    return userObj?.name || email;
-  };
+  const toggleSelection = (id) => setSelectedInventories(prev => toggleInSet(prev, id));
 
-  const toggleSelection = (id) => {
-    const next = new Set(selectedInventories);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedInventories(next);
-  };
-
-  const handleSelectAll = () => {
-    if (selectedInventories.size === topLevelInventories.length) {
-      setSelectedInventories(new Set());
-    } else {
-      setSelectedInventories(new Set(topLevelInventories.map(i => i.id)));
-    }
-  };
-
-  const calculateDescendantItemCount = (invId) => {
-    let ids = [invId];
-    const getChildren = (parentId) => {
-      const children = allInvs.filter(i => i.parentInventoryId === parentId);
-      for (const child of children) {
-        ids.push(child.id);
-        getChildren(child.id);
-      }
-    };
-    getChildren(invId);
-    
-    let total = 0;
-    allItems.forEach(item => {
-      if (ids.includes(item.inventoryId)) {
-        total += parseInt(item.quantity || 1, 10);
-      }
-    });
-    return total;
-  };
+  const handleSelectAll = () =>
+    setSelectedInventories(prev => toggleSelectAll(prev, topLevelInventories));
 
   const handleAddInventory = async () => {
     if (!newInventoryName.trim()) return;
     try {
       await InventoryService.addInventory(listId, newInventoryName.trim());
-      setIsAddDialogVisible(false);
+      setIsAddModalVisible(false);
       setNewInventoryName('');
     } catch (e) {
-      Alert.alert('Error', 'Failed to create inventory');
+      Alert.alert('Error', 'Failed to create folder');
     }
-  };
-
-  const getStatusStyle = (status) => {
-    if (status === 'Available') return { bg: theme.colors.primaryContainer, color: theme.colors.onPrimaryContainer };
-    if (status === 'Missing') return { bg: '#FFF3E0', color: '#E65100' };
-    return { bg: theme.colors.errorContainer, color: theme.colors.onErrorContainer };
   };
 
   const renderNormalView = () => (
     <FlatList
+      keyboardShouldPersistTaps="handled"
       data={topLevelInventories}
       keyExtractor={(item) => item.id}
-      contentContainerStyle={{ paddingBottom: 80 }}
+      contentContainerStyle={{ paddingBottom: 100 }}
+      showsVerticalScrollIndicator={false}
       renderItem={({ item }) => {
-        const count = calculateDescendantItemCount(item.id);
-        const status = item.status || (item.currentHolder ? 'CheckedOut' : 'Available');
-        const holder = getHolderName(item.currentHolder);
+        const count = calculateDescendantItemCount(item.id, allInvs, allItems);
+        const status = resolveStatus(item);
+        const holder = getHolderName(item.currentHolder, usersList);
         const isSelected = selectedInventories.has(item.id);
-        const statusStyle = getStatusStyle(status);
+        const badgeVariant = getStatusBadgeVariant(status);
+
+        const leftIcon = isSelectionMode ? (
+          <Pressable onPress={() => toggleSelection(item.id)} style={{ marginRight: 8 }}>
+            {isSelected ? (
+              <CheckSquare size={20} color={appColors.accent} />
+            ) : (
+              <Square size={20} color={appColors.textSecondary} />
+            )}
+          </Pressable>
+        ) : (
+          <View style={styles.iconBox}>
+            <Folder size={18} color="#38BDF8" />
+          </View>
+        );
+
+        const rightBadge = (
+          <AppBadge variant={badgeVariant}>
+            {status}
+          </AppBadge>
+        );
+
+        const desc = `${count} ${count === 1 ? 'item' : 'items'} • Held by ${holder} • ${getRelativeTime(item.createdAt)}`;
 
         return (
-          <TouchableOpacity 
-            activeOpacity={0.8}
+          <AppListItem
+            title={item.name || 'Unnamed Folder'}
+            description={desc}
+            leftIcon={leftIcon}
+            rightElement={rightBadge}
             onPress={() => {
               if (isSelectionMode) {
                 toggleSelection(item.id);
@@ -143,54 +144,23 @@ export default function InventoryDetailScreen({ route, navigation }) {
                 navigation.navigate('FolderDetail', { inventoryId: item.id, inventoryName: item.name });
               }
             }}
-            style={[
-              styles.card, 
-              { backgroundColor: theme.colors.surface },
-              isSelected && { borderWidth: 2, borderColor: theme.colors.primary }
-            ]}
-          >
-            <View style={styles.cardHeader}>
-              {isSelectionMode && (
-                <View style={{ marginRight: 8 }}>
-                  <Checkbox status={isSelected ? 'checked' : 'unchecked'} onPress={() => toggleSelection(item.id)} />
-                </View>
-              )}
-              <Text variant="titleMedium" style={{ flex: 1, fontWeight: 'bold' }}>{item.name || 'Unnamed Inventory'}</Text>
-              <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
-                <Text style={{ fontSize: 10, color: statusStyle.color }}>{status}</Text>
-              </View>
-            </View>
-            
-            <View style={styles.cardMeta}>
-              <View style={styles.metaItem}>
-                <MaterialCommunityIcons name="account" size={14} color={theme.colors.onSurfaceVariant} />
-                <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginLeft: 4 }}>{holder}</Text>
-              </View>
-              <View style={styles.metaItem}>
-                <MaterialCommunityIcons name="package-variant-closed" size={14} color={theme.colors.onSurfaceVariant} />
-                <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginLeft: 4 }}>{count}</Text>
-              </View>
-              <View style={styles.metaItem}>
-                <MaterialCommunityIcons name="clock-outline" size={14} color={theme.colors.onSurfaceVariant} />
-                <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginLeft: 4 }}>
-                  {getRelativeTime(item.createdAt)}
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
+            style={isSelected && { backgroundColor: `${appColors.accent}10`, borderColor: `${appColors.accent}30` }}
+          />
         );
       }}
       ListEmptyComponent={
-        <Text style={{ textAlign: 'center', marginTop: 20, color: theme.colors.onSurfaceVariant }}>
-          No inventories found.
-        </Text>
+        <AppEmptyState
+          title="No storage folders"
+          description={`There are currently no folders inside "${listName || 'this list'}".`}
+          actionLabel="Create First Folder"
+          onAction={() => setIsAddModalVisible(true)}
+        />
       }
     />
   );
 
   const renderSearchResults = () => {
     const q = searchQuery.toLowerCase();
-    
     const validInvs = allInvs.filter(i => i.listId === listId);
     const validInvIds = new Set(validInvs.map(i => i.id));
 
@@ -211,30 +181,28 @@ export default function InventoryDetailScreen({ route, navigation }) {
 
     return (
       <FlatList
+        keyboardShouldPersistTaps="handled"
         data={combined}
         keyExtractor={(item) => item._type + '_' + item.id}
-        contentContainerStyle={{ paddingBottom: 80, paddingTop: 8 }}
+        contentContainerStyle={{ paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
         renderItem={({ item }) => {
-          let icon = "folder";
-          let color = theme.colors.secondary;
+          let icon = <Folder size={18} color="#38BDF8" />;
           let subtitle = "";
           let onPress = () => {};
 
           if (item._type === 'folder') {
-            icon = "folder";
-            color = theme.colors.secondary;
+            icon = <Folder size={18} color="#38BDF8" />;
             const parentInv = allInvs.find(i => i.id === item.parentInventoryId);
             subtitle = parentInv ? `Sub-folder • In ${parentInv.name}` : `Folder • In ${listName || 'List'}`;
             onPress = () => navigation.navigate('FolderDetail', { inventoryId: item.id, inventoryName: item.name });
           } else if (item._type === 'item') {
-            icon = "tools";
-            color = theme.colors.tertiary;
+            icon = <Box size={18} color="#A855F7" />;
             const parentInv = allInvs.find(i => i.id === item.inventoryId);
             subtitle = `Item • Qty: ${item.quantity || 0}${parentInv ? ` • In ${parentInv.name}` : ''}`;
             onPress = () => navigation.navigate('ItemDetail', { itemId: item.id, itemData: item });
           } else if (item._type === 'user') {
-            icon = "account";
-            color = theme.colors.tertiary;
+            icon = <User size={18} color="#10B981" />;
             const userHeldInvs = validInvs.filter(inv => inv.currentHolder?.toLowerCase() === item.email?.toLowerCase() || inv.currentHolder === item.id);
             subtitle = `${item.email || ''} • Holds ${userHeldInvs.length} folders in this list`;
             onPress = () => {
@@ -245,55 +213,61 @@ export default function InventoryDetailScreen({ route, navigation }) {
           }
 
           return (
-            <List.Item
+            <AppListItem
               title={item.name || item.email}
               description={subtitle}
-              titleStyle={{ color: theme.colors.onSurface, fontWeight: 'bold' }}
-              style={{ backgroundColor: theme.colors.surface, marginHorizontal: 16, marginVertical: 6, borderRadius: 8, elevation: 1 }}
-              left={props => <List.Icon {...props} icon={icon} color={color} />}
+              leftIcon={<View style={styles.iconBox}>{icon}</View>}
               onPress={onPress}
             />
           );
         }}
         ListEmptyComponent={
-          <Text style={{ textAlign: 'center', marginTop: 20, color: theme.colors.onSurfaceVariant }}>
-            No results found in this list.
-          </Text>
+          <AppEmptyState
+            title="No search results"
+            description={`No folders, items, or holders matched "${searchQuery}".`}
+          />
         }
       />
     );
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      
+    <View style={styles.container}>
       {!searchQuery.trim() && (
-        <View style={styles.headerActions}>
-          <Button 
-            icon="download" 
-            mode="text" 
-            onPress={() => setIsExportModalVisible(true)}
-          >
-            Export
-          </Button>
-          <Button 
-            icon={isSelectionMode ? "check-all" : "check"} 
-            mode={isSelectionMode ? "contained-tonal" : "text"}
-            onPress={() => {
-              if (!isSelectionMode) setIsSelectionMode(true);
-              else handleSelectAll();
-            }}
-          >
-            {isSelectionMode ? (selectedInventories.size === topLevelInventories.length && topLevelInventories.length > 0 ? 'Deselect All' : 'Select All') : 'Select'}
-          </Button>
+        <View style={styles.topBar}>
+          <View style={styles.topActions}>
+            <AppButton 
+              variant="secondary" 
+              size="sm" 
+              onPress={() => setIsExportModalVisible(true)}
+              icon={<Download size={14} color={appColors.textPrimary} />}
+              style={{ marginRight: 8 }}
+            >
+              Export
+            </AppButton>
+            <AppButton 
+              variant={isSelectionMode ? "primary" : "secondary"}
+              size="sm"
+              onPress={() => {
+                if (!isSelectionMode) setIsSelectionMode(true);
+                else handleSelectAll();
+              }}
+              icon={isSelectionMode ? <CheckSquare size={14} color="#09090B" /> : <CheckSquare size={14} color={appColors.textPrimary} />}
+            >
+              {isSelectionMode ? (selectedInventories.size === topLevelInventories.length && topLevelInventories.length > 0 ? 'Deselect All' : 'Select All') : 'Select'}
+            </AppButton>
+          </View>
+
           {isSelectionMode && (
-            <IconButton icon="close" size={20} onPress={() => { setIsSelectionMode(false); setSelectedInventories(new Set()); }} />
+            <Pressable onPress={() => { setIsSelectionMode(false); setSelectedInventories(new Set()); }} hitSlop={10}>
+              <X size={20} color={appColors.textSecondary} />
+            </Pressable>
           )}
         </View>
       )}
 
-      <Searchbar
-        placeholder={searchQuery ? `Searching in ${listName || 'this list'}...` : `Search ${listName || 'list'} (folders, items, holders)...`}
+      <AppSearchBar
+        placeholder={searchQuery ? `Searching in ${listName || 'this list'}...` : `Search ${listName || 'list'}...`}
         onChangeText={(text) => {
           setSearchQuery(text);
           if (text.trim()) {
@@ -302,19 +276,30 @@ export default function InventoryDetailScreen({ route, navigation }) {
           }
         }}
         value={searchQuery}
-        style={[styles.searchbar, { backgroundColor: theme.colors.surface }]}
+        style={styles.searchBar}
       />
       
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 20 }} color={theme.colors.primary} />
+        <View style={styles.loadingWrap}>
+          <AppSkeleton width="100%" height={64} style={{ marginBottom: 10 }} />
+          <AppSkeleton width="100%" height={64} style={{ marginBottom: 10 }} />
+          <AppSkeleton width="100%" height={64} />
+        </View>
       ) : (
         searchQuery.trim() ? renderSearchResults() : renderNormalView()
       )}
 
       {!searchQuery.trim() && isSelectionMode && selectedInventories.size > 0 && (
-        <View style={[styles.bulkAction, { backgroundColor: theme.colors.elevation.level3 }]}>
-          <Text>{selectedInventories.size} selected</Text>
-          <Button mode="contained" onPress={() => setIsMoveModalVisible(true)}>Move</Button>
+        <View style={styles.bulkActionBar}>
+          <Text style={styles.bulkText}>{selectedInventories.size} folders selected</Text>
+          <AppButton 
+            variant="primary" 
+            size="sm" 
+            onPress={() => setIsMoveModalVisible(true)}
+            icon={<ArrowRightLeft size={14} color="#09090B" />}
+          >
+            Move Selected
+          </AppButton>
         </View>
       )}
 
@@ -336,7 +321,7 @@ export default function InventoryDetailScreen({ route, navigation }) {
             setIsSelectionMode(false);
             setSelectedInventories(new Set());
           } catch (e) {
-            alert('Failed to move');
+            Alert.alert('Move Failed', 'Could not move the selected items. Please try again.');
           }
         }}
       />
@@ -348,45 +333,118 @@ export default function InventoryDetailScreen({ route, navigation }) {
       />
 
       {!isSelectionMode && !searchQuery.trim() && (
-        <FAB
-          icon="plus"
-          style={[styles.fab, { backgroundColor: theme.colors.primary }]}
-          color={theme.colors.onPrimary}
-          onPress={() => setIsAddDialogVisible(true)}
+        <AppFAB
+          label="New Folder"
+          onPress={() => setIsAddModalVisible(true)}
         />
       )}
 
-      <Portal>
-        <Dialog visible={isAddDialogVisible} onDismiss={() => setIsAddDialogVisible(false)}>
-          <Dialog.Title>New Inventory</Dialog.Title>
-          <Dialog.Content>
-            <TextInput
-              label="Inventory Name"
-              value={newInventoryName}
-              onChangeText={setNewInventoryName}
-              mode="outlined"
-              autoFocus
-            />
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setIsAddDialogVisible(false)}>Cancel</Button>
-            <Button onPress={handleAddInventory} disabled={!newInventoryName.trim()}>Create</Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
+      <AppModal
+        visible={isAddModalVisible}
+        onClose={() => setIsAddModalVisible(false)}
+        title="Create Storage Folder"
+        footer={
+          <View style={styles.modalFooter}>
+            <AppButton 
+              variant="ghost" 
+              onPress={() => setIsAddModalVisible(false)} 
+              style={{ flex: 1, marginRight: 8 }}
+            >
+              Cancel
+            </AppButton>
+            <AppButton 
+              variant="primary" 
+              onPress={handleAddInventory} 
+              disabled={!newInventoryName.trim()} 
+              style={{ flex: 1 }}
+            >
+              Create Folder
+            </AppButton>
+          </View>
+        }
+      >
+        <Text style={styles.modalHelper}>
+          Create a storage folder or sub-compartment to group related items together.
+        </Text>
+        <AppInput
+          label="Folder Name"
+          value={newInventoryName}
+          onChangeText={setNewInventoryName}
+          placeholder="e.g. Flight Controllers & ESCs"
+          autoFocus
+        />
+      </AppModal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingTop: 8 },
-  searchbar: { margin: 16, borderRadius: 12 },
-  card: { marginHorizontal: 16, marginVertical: 6, borderRadius: 12, padding: 12, elevation: 1 },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 },
-  cardMeta: { flexDirection: 'row', gap: 16 },
-  metaItem: { flexDirection: 'row', alignItems: 'center' },
-  bulkAction: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', elevation: 4 },
-  fab: { position: 'absolute', margin: 16, right: 0, bottom: 0, borderRadius: 16 }
+  container: { 
+    flex: 1,
+    backgroundColor: appColors.background, 
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: appSpacing.xl,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  topActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchBar: {
+    marginHorizontal: appSpacing.xl,
+    marginVertical: 12,
+  },
+  iconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: appRadius.sm,
+    backgroundColor: `${appColors.secondary}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingWrap: {
+    paddingHorizontal: appSpacing.xl,
+    paddingTop: 8,
+  },
+  bulkActionBar: {
+    position: 'absolute',
+    // Clear the floating bottom nav (absolute, bottom:24 + height:62 = 86px)
+    // so the Move bar isn't hidden behind it.
+    bottom: 96,
+    left: 20,
+    right: 20,
+    backgroundColor: appColors.elevatedSurface,
+    borderWidth: 1,
+    borderColor: appColors.border,
+    borderRadius: appRadius.lg,
+    paddingHorizontal: appSpacing.xl,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  bulkText: {
+    ...appTypography.bodyBold,
+    color: appColors.textPrimary,
+  },
+  modalHelper: {
+    ...appTypography.body,
+    color: appColors.textSecondary,
+    marginBottom: 16,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
 });
+

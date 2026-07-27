@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Alert, Image } from 'react-native';
-import { Button, Text, ActivityIndicator, useTheme } from 'react-native-paper';
+import { View, StyleSheet, Alert, Image, Text } from 'react-native';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { AuthService } from '../services/auth';
+import { AppButton } from '../components/design-system';
+import { appColors, appSpacing, appTypography } from '../theme';
 
 GoogleSignin.configure({
   webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '361893112217-i97p3ab2bd28rku8k5g6sish7u8018de.apps.googleusercontent.com',
@@ -11,7 +12,6 @@ GoogleSignin.configure({
 
 export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
-  const theme = useTheme();
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -58,30 +58,28 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={styles.brandMark}>
-        <Image 
-        source={require('../../assets/images/logo.png')} 
-        style={styles.logo} 
-        />
+    <View style={styles.container}>
+      <View style={styles.content}>
+        <View style={styles.brandMark}>
+          <Image 
+            source={require('../../assets/images/logo.png')} 
+            style={styles.logo} 
+          />
+        </View>
+        <Text style={styles.title}>Team Rotor FPV</Text>
+        <Text style={styles.subtitle}>Internal Engineering Platform</Text>
+        
+        <View style={styles.buttonWrapper}>
+          <AppButton 
+            onPress={handleGoogleLogin} 
+            loading={loading}
+            fullWidth
+            size="lg"
+          >
+            Sign in with Google
+          </AppButton>
+        </View>
       </View>
-      <Text variant="headlineMedium" style={[styles.title, { color: theme.colors.onBackground }]}>RFV</Text>
-      <Text variant="bodyLarge" style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}>Internal Management App</Text>
-      
-      {loading ? (
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-      ) : (
-        <Button 
-          mode="contained" 
-          onPress={handleGoogleLogin} 
-          icon="google" 
-          style={styles.button}
-          contentStyle={styles.buttonContent}
-          labelStyle={styles.buttonLabel}
-        >
-          Sign in with Google
-        </Button>
-      )}
     </View>
   );
 }
@@ -89,26 +87,47 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: appColors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 28,
-    overflow: 'hidden',
+    paddingHorizontal: appSpacing.xxl,
+  },
+  content: {
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
   },
   brandMark: {
-    width: 112,
-    height: 112,
-    borderRadius: 36,
-    backgroundColor: '#151A20',
+    width: 96,
+    height: 96,
+    borderRadius: 28,
+    backgroundColor: appColors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 26,
+    marginBottom: 24,
     borderWidth: 1,
-    borderColor: '#2B3340',
+    borderColor: appColors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 6,
   },
-  logo: { width: 76, height: 76, resizeMode: 'contain' },
-  title: { fontWeight: '900', letterSpacing: 1.5, marginBottom: 8 },
-  subtitle: { marginBottom: 42 },
-  button: { borderRadius: 16, width: '100%' },
-  buttonContent: { height: 56 },
-  buttonLabel: { fontWeight: '800', letterSpacing: 0.4 },
+  logo: { width: 56, height: 56, resizeMode: 'contain' },
+  title: { 
+    ...appTypography.pageTitle, 
+    fontSize: 26, 
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  subtitle: { 
+    ...appTypography.caption, 
+    color: appColors.textMuted,
+    marginBottom: 40,
+    textAlign: 'center',
+  },
+  buttonWrapper: {
+    width: '100%',
+  },
 });
+

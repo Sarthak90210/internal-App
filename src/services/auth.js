@@ -3,6 +3,38 @@ import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { useAuthStore } from '../stores/authStore';
 import { Alert } from 'react-native';
+
+/**
+ * Read custom claims off a signed-in user and confirm they are still an
+ * active, non-archived member. Shared by the sign-in path and the auth
+ * listener so the two can't drift apart.
+ */
+const resolveAuthorization = async (user) => {
+  const idTokenResult = await user.getIdTokenResult();
+  const claims = idTokenResult.claims;
+  const hasAdminClaim = !!(claims.admin || claims.superAdmin);
+
+  const userDocRef = doc(db, 'users', user.email.toLowerCase());
+  const userDoc = await getDoc(userDocRef);
+  const isActiveMember =
+    userDoc.exists() &&
+    userDoc.data().isActive !== false &&
+    userDoc.data().isArchived !== true;
+
+  return { claims, authorized: hasAdminClaim || isActiveMember };
+};
+
+const applyRoles = (user, claims) => {
+  useAuthStore.getState().setUser(user);
+  useAuthStore.getState().setRoles({
+    admin: claims.admin,
+    superAdmin: claims.superAdmin,
+    inventory: claims.inventory,
+    board: claims.board,
+    media: claims.media,
+  });
+};
+
 export const AuthService = {
   signInWithGoogleToken: async (idToken) => {
     try {
@@ -11,30 +43,15 @@ export const AuthService = {
       
       const userCredential = await signInWithCredential(auth, googleCredential);
       const user = userCredential.user;
-      
-      // Fetch custom claims to determine roles
-      const idTokenResult = await user.getIdTokenResult();
-      const claims = idTokenResult.claims;
-      
-      const hasAdminClaim = claims.admin || claims.superAdmin;
-      const userDocRef = doc(db, 'users', user.email.toLowerCase());
-      const userDoc = await getDoc(userDocRef);
-      const isAuthorizedUser = userDoc.exists() && userDoc.data().isActive !== false && userDoc.data().isArchived !== true;
 
-      if (!hasAdminClaim && !isAuthorizedUser) {
+      const { claims, authorized } = await resolveAuthorization(user);
+
+      if (!authorized) {
         await signOut(auth);
         throw new Error('Access Denied: You are not an authorized team member.');
       }
-      
-      useAuthStore.getState().setUser(user);
-      useAuthStore.getState().setRoles({
-        admin: claims.admin,
-        superAdmin: claims.superAdmin,
-        inventory: claims.inventory,
-        board: claims.board,
-        media: claims.media,
-      });
-      
+
+      applyRoles(user, claims);
       return user;
     } catch (error) {
       console.error('Google Sign-In Error:', error);
@@ -60,36 +77,20 @@ export const AuthService = {
     return auth.onAuthStateChanged(async (user) => {
       if (user) {
         try {
-          const idTokenResult = await user.getIdTokenResult();
-          const claims = idTokenResult.claims;
-          const hasAdminClaim = claims.admin || claims.superAdmin;
+          const { claims, authorized } = await resolveAuthorization(user);
 
-          let isAuthorizedUser = true;
-          try {
-            const userDocRef = doc(db, 'users', user.email.toLowerCase());
-            const userDoc = await getDoc(userDocRef);
-            isAuthorizedUser = userDoc.exists() && userDoc.data().isActive !== false && userDoc.data().isArchived !== true;
-          } catch (docErr) {
-            console.warn('Network or cache error verifying user doc, assuming authorized:', docErr);
-          }
-
-          if (!hasAdminClaim && !isAuthorizedUser) {
+          if (!authorized) {
             await signOut(auth);
             Alert.alert('Access Denied', 'You are not an authorized team member.');
             useAuthStore.getState().logout();
           } else {
-            useAuthStore.getState().setUser(user);
-            useAuthStore.getState().setRoles({
-              admin: claims.admin,
-              superAdmin: claims.superAdmin,
-              inventory: claims.inventory,
-              board: claims.board,
-              media: claims.media,
-            });
+            applyRoles(user, claims);
           }
         } catch (err) {
-          console.error('Error verifying user status:', err);
-          // Fallback: don't sign out, just set user so they aren't stuck on loading or randomly signed out
+          // A network or cache failure here must not sign the user out — they
+          // would be booted every time the app opens offline. Keep the session
+          // and let the next successful check settle it.
+          console.warn('Could not verify user status, keeping existing session:', err);
           useAuthStore.getState().setUser(user);
         }
       } else {

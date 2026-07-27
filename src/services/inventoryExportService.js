@@ -1,50 +1,48 @@
-import * as FileSystem from 'expo-file-system';
+import { documentDirectory, writeAsStringAsync } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { EXPORT_COLUMNS } from './exportColumns';
 import { getInventorySnapshot } from './inventorySnapshotService';
 
+// Excel only auto-detects UTF-8 in a CSV if the file opens with a byte order
+// mark. Without it, accented characters and symbols render as mojibake.
+const UTF8_BOM = '﻿';
+
+const escapeCell = (value) => {
+  const str = value !== undefined && value !== null ? String(value) : '';
+  return `"${str.replace(/"/g, '""')}"`;
+};
+
+const headerRow = () => EXPORT_COLUMNS.map(col => escapeCell(col.header)).join(',');
+
+const itemRow = (item) => EXPORT_COLUMNS.map(col => escapeCell(item[col.key])).join(',');
+
 /**
- * Generates a CSV string from a canonical snapshot.
+ * Write `content` to the app document directory and hand it to the share sheet.
  */
-const generateCsvContent = (snapshot) => {
-  if (!snapshot || !snapshot.allItems) return '';
+const writeAndShare = async (fileName, content) => {
+  const fileUri = documentDirectory + fileName;
+  await writeAsStringAsync(fileUri, content, { encoding: 'utf8' });
 
-  const headerRow = EXPORT_COLUMNS.map(col => `"${col.header.replace(/"/g, '""')}"`).join(',');
-  const dataRows = snapshot.allItems.map(item => {
-    return EXPORT_COLUMNS.map(col => {
-      const val = item[col.key] !== undefined && item[col.key] !== null ? String(item[col.key]) : '';
-      return `"${val.replace(/"/g, '""')}"`;
-    }).join(',');
+  if (!(await Sharing.isAvailableAsync())) {
+    throw new Error('Sharing is not available on this device');
+  }
+
+  await Sharing.shareAsync(fileUri, {
+    mimeType: 'text/csv',
+    dialogTitle: 'Export Inventory',
   });
-
-  return [headerRow, ...dataRows].join('\n');
 };
 
 /**
- * Export inventory data as a CSV file and share it.
- * @param {Object} filter - Optional filter { listId, inventoryId }
- * @param {string} fileName - Optional file name
+ * Plain CSV: header row plus one row per item, no summary block.
+ * @param {Object} filter - Optional { listId, inventoryId }
  */
 export const exportToCsv = async (filter = {}, fileName = 'TRFPV_Inventory.csv') => {
   try {
     const snapshot = await getInventorySnapshot(filter);
-    const csvContent = generateCsvContent(snapshot);
-    
-    const fileUri = FileSystem.documentDirectory + fileName;
-    await FileSystem.writeAsStringAsync(fileUri, csvContent, {
-      encoding: 'utf8'
-    });
+    const lines = [headerRow(), ...snapshot.allItems.map(itemRow)];
 
-    const canShare = await Sharing.isAvailableAsync();
-    if (canShare) {
-      await Sharing.shareAsync(fileUri, {
-        mimeType: 'text/csv',
-        dialogTitle: 'Export Inventory'
-      });
-    } else {
-      throw new Error('Sharing is not available on this device');
-    }
-
+    await writeAndShare(fileName, lines.join('\n'));
     return { success: true, itemCount: snapshot.allItems.length };
   } catch (error) {
     console.error('CSV Export failed:', error);
@@ -53,58 +51,39 @@ export const exportToCsv = async (filter = {}, fileName = 'TRFPV_Inventory.csv')
 };
 
 /**
- * Export inventory data as an Excel-compatible CSV.
- * On mobile, we generate a richly formatted CSV since xlsx library is heavy.
- * The output is fully compatible with Excel/Google Sheets import.
+ * Excel-oriented CSV: UTF-8 BOM, a summary block, and rows grouped by list.
+ * This is still a .csv — Excel opens it natively. It is deliberately not a
+ * real .xlsx workbook; that would require a spreadsheet library on the client.
  */
 export const exportToExcel = async (filter = {}, fileName = 'TRFPV_Inventory.csv') => {
   try {
     const snapshot = await getInventorySnapshot(filter);
-    
-    // Build Excel-compatible CSV with summary header
-    const lines = [];
-    lines.push('Team Rotor FPV - Inventory Export');
-    lines.push(`Generated: ${new Date(snapshot.generatedAt).toLocaleString()}`);
-    lines.push('');
-    lines.push(`Total Lists,${snapshot.summary.totalLists}`);
-    lines.push(`Total Inventories,${snapshot.summary.totalInventories}`);
-    lines.push(`Total Sub-Inventories,${snapshot.summary.totalSubInventories}`);
-    lines.push(`Total Items,${snapshot.summary.totalItems}`);
-    lines.push(`Assigned Items,${snapshot.summary.assignedItems}`);
-    lines.push(`Unassigned Items,${snapshot.summary.unassignedItems}`);
-    lines.push(`Unique Holders,${snapshot.summary.uniqueHolders}`);
-    lines.push('');
+    const { summary } = snapshot;
 
-    // Data header
-    lines.push(EXPORT_COLUMNS.map(col => `"${col.header}"`).join(','));
+    const lines = [
+      'Team Rotor FPV - Inventory Export',
+      `Generated: ${new Date(snapshot.generatedAt).toLocaleString()}`,
+      '',
+      `Total Lists,${summary.totalLists}`,
+      `Total Inventories,${summary.totalInventories}`,
+      `Total Sub-Inventories,${summary.totalSubInventories}`,
+      `Total Items,${summary.totalItems}`,
+      `Assigned Items,${summary.assignedItems}`,
+      `Unassigned Items,${summary.unassignedItems}`,
+      `Unique Holders,${summary.uniqueHolders}`,
+      '',
+      headerRow(),
+    ];
 
-    // Data rows grouped by list
-    const listNames = Object.keys(snapshot.lists).sort();
-    for (const listName of listNames) {
-      const items = snapshot.lists[listName] || [];
-      const sorted = [...items].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
-      for (const item of sorted) {
-        lines.push(EXPORT_COLUMNS.map(col => {
-          const val = item[col.key] !== undefined && item[col.key] !== null ? String(item[col.key]) : '';
-          return `"${val.replace(/"/g, '""')}"`;
-        }).join(','));
+    for (const listName of Object.keys(snapshot.lists).sort()) {
+      const items = [...(snapshot.lists[listName] || [])]
+        .sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
+      for (const item of items) {
+        lines.push(itemRow(item));
       }
     }
 
-    const content = lines.join('\n');
-    const fileUri = FileSystem.documentDirectory + fileName;
-    await FileSystem.writeAsStringAsync(fileUri, content, {
-      encoding: 'utf8'
-    });
-
-    const canShare = await Sharing.isAvailableAsync();
-    if (canShare) {
-      await Sharing.shareAsync(fileUri, {
-        mimeType: 'text/csv',
-        dialogTitle: 'Export Inventory'
-      });
-    }
-
+    await writeAndShare(fileName, UTF8_BOM + lines.join('\n'));
     return { success: true, itemCount: snapshot.allItems.length };
   } catch (error) {
     console.error('Excel export failed:', error);
@@ -113,20 +92,17 @@ export const exportToExcel = async (filter = {}, fileName = 'TRFPV_Inventory.csv
 };
 
 /**
- * Get export scopes available based on context
+ * Export scopes available given the current screen context.
  */
 export const getExportScopes = (selectedListId, selectedInventoryId) => {
-  const scopes = [];
-  
-  scopes.push({ key: 'full', label: 'Full Database', filter: {} });
-  
+  const scopes = [{ key: 'full', label: 'Full Database', filter: {} }];
+
   if (selectedListId) {
     scopes.push({ key: 'list', label: 'Current List', filter: { listId: selectedListId } });
   }
-  
   if (selectedInventoryId) {
     scopes.push({ key: 'inventory', label: 'Selected Inventory', filter: { inventoryId: selectedInventoryId } });
   }
-  
+
   return scopes;
 };

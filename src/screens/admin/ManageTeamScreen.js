@@ -1,10 +1,21 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { View, FlatList, StyleSheet, Alert, Modal, ScrollView, TouchableOpacity } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { List, FAB, useTheme, ActivityIndicator, Text, Button, TextInput, Switch, IconButton, Divider, Searchbar, Checkbox } from 'react-native-paper';
+import React, { useEffect, useState } from 'react';
+import { View, FlatList, StyleSheet, Alert, ScrollView, Switch } from 'react-native';
+import { Text } from 'react-native-paper';
+import { Award, Briefcase, Wrench, Eye, EyeOff } from '../../lib/lucideIcons';
 import { TeamService } from '../../services/team';
 import { useAuthStore } from '../../stores/authStore';
-import { useTagStore } from '../../stores/tagStore';
+import { 
+  AppChip, 
+  AppListItem, 
+  AppFAB, 
+  AppModal, 
+  AppInput, 
+  AppButton, 
+  AppBadge, 
+  AppSkeleton, 
+  AppEmptyState 
+} from '../../components/design-system';
+import { appColors, appRadius, appSpacing, appTypography } from '../../theme';
 
 const EMPTY_MEMBER = {
   userId: '',
@@ -16,7 +27,6 @@ const EMPTY_MEMBER = {
 };
 
 export default function ManageTeamScreen() {
-  const theme = useTheme();
   const { user } = useAuthStore();
 
   const [years, setYears] = useState([]);
@@ -56,7 +66,7 @@ export default function ManageTeamScreen() {
 
   const openAddModal = () => {
     if (!selectedYear) {
-      Alert.alert('No Year', 'Please create or select a team year first.');
+      Alert.alert('No Year Selected', 'Please create or select a team year first.');
       return;
     }
     setFormData({ ...EMPTY_MEMBER, year: selectedYear });
@@ -78,7 +88,7 @@ export default function ManageTeamScreen() {
   };
 
   const handleDelete = (item) => {
-    Alert.alert('Confirm Delete', `Are you sure you want to remove this member?`, [
+    Alert.alert('Remove Team Member', `Are you sure you want to permanently remove this member from the ${item.year} roster?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => TeamService.deleteTeamMember(item) }
     ]);
@@ -86,7 +96,7 @@ export default function ManageTeamScreen() {
 
   const handleSave = async () => {
     if (!formData.userId) {
-      Alert.alert('Required', 'A User ID is required.');
+      Alert.alert('Required Field', 'A User ID / Account Email is required to assign this role.');
       return;
     }
     
@@ -101,164 +111,227 @@ export default function ManageTeamScreen() {
       }
       setModalVisible(false);
     } catch (err) {
-      Alert.alert('Error', 'Failed to save team member');
+      Alert.alert('Error', 'Failed to save team member details');
     } finally {
       setIsSaving(false);
     }
   };
 
   const getUserDetails = (userId) => {
-    const found = users.find(u => u.id === userId);
+    const found = users.find(u => u.id === userId || u.email === userId);
     return found ? (found.name || found.email) : userId;
   };
 
+  const getCategoryIcon = (category) => {
+    const cat = (category || '').toLowerCase();
+    if (cat === 'leaders') return <Award size={18} color="#A855F7" />;
+    if (cat === 'technical') return <Wrench size={18} color="#38BDF8" />;
+    return <Briefcase size={18} color="#10B981" />;
+  };
+
+  const getCategoryBadgeVariant = (category) => {
+    const cat = (category || '').toLowerCase();
+    if (cat === 'leaders') return 'primary';
+    if (cat === 'technical') return 'secondary';
+    return 'success';
+  };
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={[styles.yearSelector, { backgroundColor: theme.colors.surface }]}>
-        <Text style={{ color: theme.colors.onSurfaceVariant }}>Select Year:</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+    <View style={styles.container}>
+      <View style={styles.yearHeader}>
+        <Text style={styles.yearHeaderLabel}>Roster Year</Text>
+        <ScrollView horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} contentContainerStyle={styles.yearScroll}>
           {years.map(y => (
-            <TouchableOpacity 
-              key={y.id} 
+            <AppChip 
+              key={y.id || y.year} 
+              label={`${y.year}${y.isCurrent ? ' ★' : ''}`}
+              selected={selectedYear === y.year}
               onPress={() => setSelectedYear(y.year)}
-              style={[styles.yearChip, { backgroundColor: selectedYear === y.year ? theme.colors.primary : theme.colors.surfaceVariant }]}
-            >
-              <Text style={{ color: selectedYear === y.year ? theme.colors.onPrimary : theme.colors.onSurfaceVariant }}>
-                {y.year} {y.isCurrent ? '⭐' : ''}
-              </Text>
-            </TouchableOpacity>
+            />
           ))}
         </ScrollView>
       </View>
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 20 }} color={theme.colors.primary} />
+        <View style={styles.loadingWrap}>
+          <AppSkeleton width="100%" height={76} style={{ marginBottom: 12 }} />
+          <AppSkeleton width="100%" height={76} style={{ marginBottom: 12 }} />
+          <AppSkeleton width="100%" height={76} />
+        </View>
       ) : (
         <FlatList
+          keyboardShouldPersistTaps="handled"
           data={currentYearMembers}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingBottom: 80 }}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {
+            const userName = getUserDetails(item.userId);
+            const badgeVariant = !item.isActive ? 'danger' : getCategoryBadgeVariant(item.category);
+            const badgeLabel = !item.isActive ? 'Inactive' : (item.category || 'Member').toUpperCase();
+
             return (
-              <List.Item
-                title={getUserDetails(item.userId)}
-                description={`${item.role} (${item.category})`}
-                titleStyle={{ color: theme.colors.onSurface }}
-                descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
-                style={{ backgroundColor: theme.colors.surface, marginHorizontal: 16, marginVertical: 6, borderRadius: 8 }}
-                left={props => <List.Icon {...props} icon="account-badge" color={item.isActive ? theme.colors.primary : theme.colors.error} />}
-                right={props => (
-                  <View style={{ flexDirection: 'row' }}>
-                    <IconButton icon="pencil" iconColor={theme.colors.primary} onPress={() => openEditModal(item)} />
-                    <IconButton icon="delete" iconColor={theme.colors.error} onPress={() => handleDelete(item)} />
+              <AppListItem
+                title={userName}
+                description={`${item.role || 'Team Member'} • Order #${item.order}`}
+                leftIcon={
+                  <View style={[styles.iconBox, { backgroundColor: item.category === 'leaders' ? '#A855F715' : '#38BDF815' }]}>
+                    {getCategoryIcon(item.category)}
                   </View>
-                )}
+                }
+                rightElement={
+                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                    <AppBadge variant={badgeVariant}>{badgeLabel}</AppBadge>
+                  </View>
+                }
+                onPress={() => openEditModal(item)}
+                onDelete={() => handleDelete(item)}
               />
             );
           }}
           ListEmptyComponent={
-            <Text style={{ textAlign: 'center', marginTop: 20, color: theme.colors.onSurfaceVariant }}>
-              No members found for {selectedYear}.
-            </Text>
+            <AppEmptyState
+              title={`No Roster Found (${selectedYear || 'Select Year'})`}
+              description="There are no team members assigned to this academic year yet."
+              actionLabel="Add Team Member"
+              onAction={openAddModal}
+            />
           }
         />
       )}
-      <FAB
-        icon="plus"
-        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
-        color={theme.colors.onPrimary}
+
+      <AppFAB
+        label="Add Member"
         onPress={openAddModal}
       />
 
-      {/* Main Add/Edit Modal */}
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalVisible(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
-          <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface }]}>
-            <IconButton icon="close" onPress={() => setModalVisible(false)} />
-            <Text variant="titleLarge">{editingId ? 'Edit Member' : 'Add Member'}</Text>
-            <Button disabled={isSaving} onPress={handleSave}>Save</Button>
+      <AppModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        title={editingId ? 'Edit Team Assignment' : `Add to ${selectedYear || ''} Roster`}
+        footer={
+          <View style={styles.modalFooter}>
+            <AppButton variant="ghost" onPress={() => setModalVisible(false)} style={{ flex: 1, marginRight: 8 }} disabled={isSaving}>
+              Cancel
+            </AppButton>
+            <AppButton variant="primary" onPress={handleSave} style={{ flex: 1 }} loading={isSaving}>
+              Save Assignment
+            </AppButton>
           </View>
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
-            <TextInput
-              label="User ID"
-              value={formData.userId}
-              onChangeText={t => setFormData({...formData, userId: t})}
-              style={styles.input}
-              mode="outlined"
-            />
-            
-            <TextInput
-              label="Role (e.g. CAPTAIN)"
-              value={formData.role}
-              onChangeText={t => setFormData({...formData, role: t})}
-              style={styles.input}
-              mode="outlined"
-            />
+        }
+      >
+        <AppInput
+          label="User ID / Account Email"
+          value={formData.userId}
+          onChangeText={t => setFormData({...formData, userId: t})}
+          placeholder="e.g. member@rotorfpv.com or User ID"
+          autoFocus={!editingId}
+        />
+        <View style={{ marginTop: 16 }}>
+          <AppInput
+            label="Assigned Role / Title"
+            value={formData.role}
+            onChangeText={t => setFormData({...formData, role: t})}
+            placeholder="e.g. CAPTAIN, DRONE PILOT, HARDWARE LEAD"
+          />
+        </View>
+        <View style={{ marginTop: 16 }}>
+          <AppInput
+            label="Roster Category"
+            value={formData.category}
+            onChangeText={t => setFormData({...formData, category: t})}
+            placeholder="leaders / technical / essential"
+          />
+        </View>
+        <View style={{ marginTop: 16 }}>
+          <AppInput
+            label="Display Priority Order"
+            value={String(formData.order)}
+            onChangeText={t => setFormData({...formData, order: t})}
+            keyboardType="numeric"
+            placeholder="0 (lower numbers appear first)"
+          />
+        </View>
 
-            <TextInput
-              label="Category (leaders / technical / essential)"
-              value={formData.category}
-              onChangeText={t => setFormData({...formData, category: t})}
-              style={styles.input}
-              mode="outlined"
-            />
-
-            <TextInput
-              label="Order"
-              value={String(formData.order)}
-              onChangeText={t => setFormData({...formData, order: t})}
-              style={styles.input}
-              mode="outlined"
-              keyboardType="numeric"
-            />
-            
-            <View style={styles.switchRow}>
-              <Text>Active</Text>
-              <Switch value={formData.isActive} onValueChange={v => setFormData({...formData, isActive: v})} />
+        <View style={styles.switchBox}>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {formData.isActive ? <Eye size={16} color="#10B981" style={{ marginRight: 6 }} /> : <EyeOff size={16} color="#EF4444" style={{ marginRight: 6 }} />}
+              <Text style={styles.switchTitle}>Active Roster Status</Text>
             </View>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-
+            <Text style={styles.switchSub}>When disabled, this member is hidden from the public team page.</Text>
+          </View>
+          <Switch 
+            value={formData.isActive} 
+            onValueChange={v => setFormData({...formData, isActive: v})}
+            trackColor={{ false: appColors.border, true: appColors.accent }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
+      </AppModal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  yearSelector: {
-    padding: 16,
+  container: { 
+    flex: 1,
+    backgroundColor: appColors.background, 
+  },
+  yearHeader: {
+    backgroundColor: appColors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: appColors.border,
+    paddingVertical: 14,
+    paddingHorizontal: appSpacing.xl,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12
   },
-  yearChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8
+  yearHeaderLabel: {
+    ...appTypography.captionBold,
+    color: appColors.textSecondary,
+    marginRight: 12,
   },
-  fab: {
-    position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 16,
-    borderRadius: 16,
+  yearScroll: {
+    alignItems: 'center',
   },
-  modalHeader: {
+  loadingWrap: {
+    padding: appSpacing.xl,
+  },
+  listContent: {
+    padding: appSpacing.xl,
+    paddingBottom: 100,
+  },
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: appRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  switchBox: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 8,
-    elevation: 4
+    backgroundColor: appColors.surface,
+    borderWidth: 1,
+    borderColor: appColors.border,
+    padding: appSpacing.lg,
+    borderRadius: appRadius.md,
+    marginTop: 20,
   },
-  input: {
-    marginBottom: 12
+  switchTitle: {
+    ...appTypography.bodyBold,
+    color: appColors.textPrimary,
   },
-  switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8
-  }
+  switchSub: {
+    ...appTypography.caption,
+    color: appColors.textSecondary,
+    marginTop: 2,
+  },
 });
+

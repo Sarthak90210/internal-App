@@ -1,4 +1,4 @@
-import { collection, query, onSnapshot, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, addDoc, updateDoc, deleteDoc, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { deleteCloudinaryImage, logAdminAction } from './adminApi';
 
@@ -27,7 +27,9 @@ export const GalleryService = {
       updatedAt: serverTimestamp(),
       updatedBy: userEmail
     };
-    await updateDoc(doc(db, 'settings', 'gallery'), dataToSave);
+    // setDoc+merge, not updateDoc: 'settings/gallery' is a singleton that does
+    // not exist until it is first written, and updateDoc throws on a missing doc.
+    await setDoc(doc(db, 'settings', 'gallery'), dataToSave, { merge: true });
     await logAdminAction('UPDATE', 'GallerySettings', 'Updated Gallery Hero Image');
   },
 

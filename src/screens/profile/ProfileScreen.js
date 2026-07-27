@@ -1,17 +1,36 @@
-import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Alert } from 'react-native';
-import { Avatar, Text, useTheme, Button, TextInput, Chip, Divider, Surface, IconButton, ActivityIndicator, Snackbar } from 'react-native-paper';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, ScrollView, StyleSheet, Alert, Pressable, Image } from 'react-native';
+import { Text, Snackbar } from 'react-native-paper';
+import { Camera, ExternalLink, RefreshCw, LogOut, Mail } from '../../lib/lucideIcons';
 import { useAuthStore } from '../../stores/authStore';
 import { AuthService } from '../../services/auth';
 import { UsersService } from '../../services/users';
 import { CustomFieldsService } from '../../services/customFields';
 import { TagsService } from '../../services/tags';
-import { uploadFile, apiPost, fetchAdmins, syncUserPermissions, logAdminAction } from '../../services/adminApi';
+import { apiPost, fetchAdmins, syncUserPermissions, logAdminAction } from '../../services/adminApi';
 import { expandTagIds, getGrantedTagIds } from '../../lib/tagGrants';
-import * as ImagePicker from 'expo-image-picker';
+import { pickAndUploadMedia, ownProfileFolder } from '../../lib/mediaUpload';
+import Constants from 'expo-constants';
 import { useUpdateStore } from '../../stores/updateStore';
+import { 
+  AppCard, 
+  AppButton, 
+  AppInput, 
+  AppChip, 
+  AppBadge, 
+  AppSection, 
+  AppSkeleton 
+} from '../../components/design-system';
+import { appColors, appRadius, appSpacing, appTypography } from '../../theme';
 
-// Helper to get initials
+// Read the real app version/runtime from the bundled config so this label
+// always matches app.json instead of drifting like the old hardcoded "v1.1.1".
+const APP_VERSION = Constants.expoConfig?.version || '—';
+const APP_RUNTIME = (() => {
+  const rt = Constants.expoConfig?.runtimeVersion;
+  return typeof rt === 'string' ? rt : rt?.policy;
+})();
+
 const getInitials = (name) => {
   if (!name) return '??';
   const parts = name.split(' ');
@@ -22,7 +41,6 @@ const getInitials = (name) => {
 };
 
 export default function ProfileScreen() {
-  const theme = useTheme();
   const { user: authUser, roles } = useAuthStore();
   const { checkForUpdate, isChecking, isDownloading } = useUpdateStore();
   
@@ -37,6 +55,16 @@ export default function ProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+
+  // Track editing state in a ref so the Firestore subscription (whose closure
+  // captures state at mount) can tell whether the user is mid-edit. Without
+  // this, every snapshot (including our own writes from photo upload / save)
+  // rebuilds editForm, resetting each TextInput's value and bouncing focus
+  // to an adjacent field on Android.
+  const isEditingRef = useRef(false);
+  useEffect(() => {
+    isEditingRef.current = isEditing;
+  }, [isEditing]);
   
   // Edit state
   const [editForm, setEditForm] = useState({});
@@ -49,7 +77,6 @@ export default function ProfileScreen() {
   
   // Snackbar
   const [snackbar, setSnackbar] = useState({ visible: false, message: '' });
-
   const showSnackbar = (message) => setSnackbar({ visible: true, message });
 
   useEffect(() => {
@@ -63,7 +90,11 @@ export default function ProfileScreen() {
       try {
         unsubUser = UsersService.subscribeToUser(authUser.email, (data) => {
           setProfile(data);
-          if (data) {
+          // Only hydrate the edit form from the snapshot when the user is NOT
+          // actively editing. While editing, the local editForm is the source
+          // of truth — overwriting it here (e.g. when our own photo upload or
+          // save triggers a snapshot) would wipe typed text and steal focus.
+          if (data && !isEditingRef.current) {
             setEditForm({
               name: data.name || '',
               image: data.image || '',
@@ -106,52 +137,61 @@ export default function ProfileScreen() {
   }, [authUser]);
 
   const handlePickImage = async () => {
-    let result;
-    try {
-      result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-    } catch (error) {
-      console.error('Image picking error:', error);
-      Alert.alert('Error', 'Failed to pick image');
+    if (!authUser?.email) {
+      Alert.alert('Not signed in', 'Your session has expired. Please sign in again.');
       return;
     }
 
-    if (!result.canceled && result.assets[0]) {
-      setUploadingImage(true);
-      try {
-        const uri = result.assets[0].uri;
-        const folder = `users/${authUser.email.toLowerCase()}`;
-        const response = await uploadFile(uri, folder);
-        
-        if (response.ok && response.data?.secure_url) {
-          setEditForm(prev => ({ ...prev, image: response.data.secure_url }));
-          showSnackbar('Profile image uploaded successfully');
-        } else {
-          Alert.alert('Upload Failed', response.data?.error || 'Failed to upload image.');
-        }
-      } catch (error) {
-        console.error('Image upload error:', error);
-        Alert.alert('Upload Failed', error.message || 'Failed to upload image.');
-      } finally {
-        setUploadingImage(false);
+    setUploadingImage(true);
+    try {
+      // ownProfileFolder() applies the exact same sanitisation the backend
+      // uses for its permission check. Building this path by hand is what
+      // broke profile uploads for every non-admin.
+      const result = await pickAndUploadMedia({
+        folder: ownProfileFolder(authUser.email),
+      });
+
+      if (result.canceled) return;
+
+      if (!result.ok) {
+        Alert.alert('Upload Failed', result.error);
+        return;
       }
+
+      setEditForm(prev => ({ ...prev, image: result.url }));
+
+      // Persist immediately. Writing the URL only into editForm left the
+      // picture sitting on Cloudinary but absent from the profile unless the
+      // user went on to press Save — so reopening the app showed the old
+      // avatar and the upload looked like it had silently failed.
+      try {
+        const email = authUser.email.toLowerCase();
+        await UsersService.updateUser(email, { image: result.url }, false, email);
+        showSnackbar('Profile picture updated');
+      } catch (error) {
+        console.error('Profile picture save error:', error);
+        Alert.alert('Save Failed', 'The picture uploaded but could not be saved to your profile.');
+      }
+    } finally {
+      setUploadingImage(false);
     }
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
+      // editForm starts as {} and is only hydrated once the Firestore snapshot
+      // arrives, so every field is coerced before .trim() — saving before
+      // hydration used to throw "Cannot read property 'trim' of undefined".
+      const text = (value) => (value ?? '').trim();
+
       const updatedData = {
-        name: editForm.name.trim(),
-        image: editForm.image.trim(),
-        roomNumber: editForm.roomNumber.trim(),
-        jobTitle: editForm.jobTitle.trim(),
-        linkedin: editForm.linkedin.trim(),
-        github: editForm.github.trim(),
+        name: text(editForm.name),
+        image: text(editForm.image),
+        roomNumber: text(editForm.roomNumber),
+        jobTitle: text(editForm.jobTitle),
+        linkedin: text(editForm.linkedin),
+        github: text(editForm.github),
         customFields: editCustomFields,
         email: authUser.email.toLowerCase(),
         updatedAt: new Date().toISOString(),
@@ -225,42 +265,53 @@ export default function ProfileScreen() {
 
   const renderCustomFieldInput = (field) => {
     const value = editCustomFields[field.id] || '';
-    
     return (
-      <TextInput
+      <AppInput
         key={field.id}
         label={field.name}
         value={value.toString()}
         onChangeText={(text) => setEditCustomFields(prev => ({ ...prev, [field.id]: text }))}
-        mode="outlined"
-        style={styles.input}
+        placeholder={field.description || `Enter ${field.name}...`}
         multiline={field.type === 'text'}
         keyboardType={field.type === 'number' ? 'numeric' : 'default'}
-        placeholder={field.description}
       />
     );
   };
 
   if (loading) {
     return (
-      <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
-        <ActivityIndicator size="large" />
+      <View style={styles.container}>
+        <View style={styles.content}>
+          <AppCard style={{ padding: appSpacing.xxl }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <AppSkeleton width={64} height={64} borderRadius={32} style={{ marginRight: 16 }} />
+              <View style={{ flex: 1 }}>
+                <AppSkeleton width="60%" height={24} style={{ marginBottom: 8 }} />
+                <AppSkeleton width="40%" height={14} />
+              </View>
+            </View>
+          </AppCard>
+          <AppCard style={{ height: 220, padding: appSpacing.xl }}>
+            <AppSkeleton width="40%" height={20} style={{ marginBottom: 20 }} />
+            <AppSkeleton width="100%" height={16} style={{ marginBottom: 12 }} />
+            <AppSkeleton width="100%" height={16} style={{ marginBottom: 12 }} />
+            <AppSkeleton width="80%" height={16} />
+          </AppCard>
+        </View>
       </View>
     );
   }
 
   if (!profile) {
     return (
-      <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
-        <Text>Profile not found</Text>
+      <View style={[styles.container, styles.center]}>
+        <Text style={{ color: appColors.textPrimary }}>Profile not found</Text>
       </View>
     );
   }
 
   const displayData = isEditing ? editForm : profile;
   const displayCustomFields = isEditing ? editCustomFields : (profile.customFields || {});
-
-  // Resolve user tags
   const userTagIds = profile.tags || [];
   const resolvedTags = userTagIds.map(tagId => {
     const found = tags.find(t => t.id === tagId);
@@ -268,83 +319,127 @@ export default function ProfileScreen() {
   }).filter(Boolean);
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <ScrollView contentContainerStyle={styles.container}>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         
-        {/* Header Section */}
-        <Surface style={styles.headerSurface} elevation={1}>
-          <View style={styles.avatarContainer}>
-            {displayData.image ? (
-              <Avatar.Image size={100} source={{ uri: displayData.image }} />
-            ) : (
-              <Avatar.Text size={100} label={getInitials(displayData.name || authUser?.email)} />
-            )}
-            
-            {isEditing && (
-              <IconButton
-                icon="camera"
-                mode="contained"
-                size={24}
-                style={styles.editAvatarButton}
-                onPress={handlePickImage}
-                loading={uploadingImage}
-                disabled={uploadingImage}
-              />
-            )}
-          </View>
-          
-          <Text variant="headlineSmall" style={styles.headerName}>{displayData.name || 'No Name'}</Text>
-          <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>{profile.email}</Text>
-          
-          <View style={styles.chipContainer}>
-            <Chip 
-              mode="outlined" 
-              style={[styles.chip, { borderColor: (profile.status === 'active' || !profile.status) ? theme.colors.success : theme.colors.warning }]}
-              textStyle={{ color: (profile.status === 'active' || !profile.status) ? theme.colors.success : theme.colors.warning, textTransform: 'capitalize' }}
-            >
-              {profile.status || 'Active'}
-            </Chip>
-            {roles?.admin && <Chip mode="flat" style={styles.chip}>Admin</Chip>}
-          </View>
-
-          {!isEditing ? (
-            <Button mode="contained" onPress={() => setIsEditing(true)} style={styles.editButton}>
-              Edit Profile
-            </Button>
-          ) : (
-            <View style={styles.editActions}>
-              <Button mode="outlined" onPress={() => { setIsEditing(false); setEditForm({ name: profile.name || '', image: profile.image || '', roomNumber: profile.roomNumber || '', jobTitle: profile.jobTitle || '', linkedin: profile.linkedin || '', github: profile.github || '', tags: profile.tags || [] }); setEditCustomFields(profile.customFields || {}); }} style={styles.actionBtn}>
-                Cancel
-              </Button>
-              <Button mode="contained" onPress={handleSave} loading={saving} style={styles.actionBtn}>
-                Save
-              </Button>
+        {/* Card 1: Top Hero */}
+        <AppCard style={styles.heroCard} elevated={isEditing}>
+          <View style={styles.heroRow}>
+            <View style={styles.avatarWrapper}>
+              {displayData.image ? (
+                <Image source={{ uri: displayData.image }} style={styles.avatarImg} />
+              ) : (
+                <View style={styles.avatarFallback}>
+                  <Text style={styles.avatarInitials}>
+                    {getInitials(displayData.name || authUser?.email)}
+                  </Text>
+                </View>
+              )}
+              {isEditing && (
+                <Pressable
+                  onPress={handlePickImage}
+                  disabled={uploadingImage}
+                  style={styles.cameraBtn}
+                >
+                  <Camera size={14} color="#09090B" />
+                </Pressable>
+              )}
             </View>
-          )}
-        </Surface>
 
-        {/* Profile Info Section */}
-        <Surface style={styles.sectionSurface} elevation={1}>
-          <Text variant="titleMedium" style={styles.sectionTitle}>Profile Info</Text>
-          <Divider style={styles.divider} />
-          
-          {isEditing ? (
-            <>
-              <TextInput label="Full Name" value={editForm.name} onChangeText={t => setEditForm(prev => ({...prev, name: t}))} mode="outlined" style={styles.input} />
-              <TextInput label="Room Number" value={editForm.roomNumber} onChangeText={t => setEditForm(prev => ({...prev, roomNumber: t}))} mode="outlined" style={styles.input} />
-              <TextInput label="Job Title / Current Status" value={editForm.jobTitle} onChangeText={t => setEditForm(prev => ({...prev, jobTitle: t}))} mode="outlined" style={styles.input} />
-              <TextInput label="LinkedIn URL" value={editForm.linkedin} onChangeText={t => setEditForm(prev => ({...prev, linkedin: t}))} mode="outlined" style={styles.input} autoCapitalize="none" keyboardType="url" />
-              <TextInput label="GitHub URL" value={editForm.github} onChangeText={t => setEditForm(prev => ({...prev, github: t}))} mode="outlined" style={styles.input} autoCapitalize="none" keyboardType="url" />
-              {customFields.map(renderCustomFieldInput)}
-            </>
-          ) : (
-            <>
-              <InfoRow label="Room Number" value={profile.roomNumber || 'N/A'} />
-              <InfoRow label="Job Title / Current Status" value={profile.jobTitle || 'N/A'} />
-              <InfoRow label="LinkedIn URL" value={profile.linkedin || 'N/A'} isLink={!!profile.linkedin} />
-              <InfoRow label="GitHub URL" value={profile.github || 'N/A'} isLink={!!profile.github} />
+            <View style={styles.heroCopy}>
+              <Text style={styles.nameText}>{displayData.name || 'Unnamed Member'}</Text>
+              <Text style={styles.emailText}>{profile.email}</Text>
               
-              {customFields.map(field => {
+              <View style={styles.badgeRow}>
+                <AppBadge variant={(profile.status === 'active' || !profile.status) ? 'success' : 'warning'}>
+                  {profile.status || 'Active'}
+                </AppBadge>
+                {roles?.admin && <AppBadge variant="admin" style={{ marginLeft: 6 }}>Admin</AppBadge>}
+                {isSuperAdmin && <AppBadge variant="superAdmin" style={{ marginLeft: 6 }}>Super</AppBadge>}
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.heroActions}>
+            {!isEditing ? (
+              <AppButton variant="secondary" size="sm" onPress={() => setIsEditing(true)}>
+                Edit Profile
+              </AppButton>
+            ) : (
+              <View style={styles.editBtnRow}>
+                <AppButton 
+                  variant="ghost" 
+                  size="sm" 
+                  onPress={() => { 
+                    setIsEditing(false); 
+                    setEditForm({ 
+                      name: profile.name || '', 
+                      image: profile.image || '', 
+                      roomNumber: profile.roomNumber || '', 
+                      jobTitle: profile.jobTitle || '', 
+                      linkedin: profile.linkedin || '', 
+                      github: profile.github || '', 
+                      tags: profile.tags || [] 
+                    }); 
+                    setEditCustomFields(profile.customFields || {}); 
+                  }}
+                  style={{ flex: 1, marginRight: 8 }}
+                >
+                  Cancel
+                </AppButton>
+                <AppButton 
+                  variant="primary" 
+                  size="sm" 
+                  onPress={handleSave} 
+                  loading={saving}
+                  style={{ flex: 1 }}
+                >
+                  Save
+                </AppButton>
+              </View>
+            )}
+          </View>
+        </AppCard>
+
+        {/* Card 2: Information & Groups Section */}
+        <AppSection title="Profile Information" subtitle="Personal details and team metadata">
+          {isEditing ? (
+            <View style={styles.editFormContainer}>
+              <AppInput label="Full Name" value={editForm.name} onChangeText={t => setEditForm(prev => ({...prev, name: t}))} />
+              <AppInput label="Room Number" value={editForm.roomNumber} onChangeText={t => setEditForm(prev => ({...prev, roomNumber: t}))} />
+              <AppInput label="Job Title / Role" value={editForm.jobTitle} onChangeText={t => setEditForm(prev => ({...prev, jobTitle: t}))} />
+              <AppInput label="LinkedIn URL" value={editForm.linkedin} onChangeText={t => setEditForm(prev => ({...prev, linkedin: t}))} autoCapitalize="none" keyboardType="url" />
+              <AppInput label="GitHub URL" value={editForm.github} onChangeText={t => setEditForm(prev => ({...prev, github: t}))} autoCapitalize="none" keyboardType="url" />
+              {customFields.map(renderCustomFieldInput)}
+
+              {isSuperAdmin && tags.length > 0 && (
+                <View style={styles.tagEditSection}>
+                  <Text style={styles.subLabel}>Assign Groups & Tags</Text>
+                  <View style={styles.chipWrap}>
+                    {tags.map(tag => {
+                      const isSelected = (editForm.tags || []).includes(tag.id);
+                      return (
+                        <AppChip
+                          key={tag.id}
+                          selected={isSelected}
+                          onPress={() => handleTagToggle(tag.id)}
+                        >
+                          {tag.name}
+                        </AppChip>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+            </View>
+          ) : (
+            <View>
+              <InfoRow label="Room Number" value={profile.roomNumber || 'N/A'} />
+              <InfoRow label="Job Title / Role" value={profile.jobTitle || 'N/A'} />
+              <InfoRow label="LinkedIn" value={profile.linkedin || 'N/A'} isLink={!!profile.linkedin} />
+              <InfoRow label="GitHub" value={profile.github || 'N/A'} isLink={!!profile.github} />
+              
+              {customFields.map((field, index) => {
                 const val = displayCustomFields[field.id];
                 const isUrl = typeof val === 'string' && (val.startsWith('http://') || val.startsWith('https://'));
                 return (
@@ -353,201 +448,295 @@ export default function ProfileScreen() {
                     label={field.name} 
                     value={val || 'N/A'}
                     isLink={isUrl}
+                    isLast={index === customFields.length - 1 && resolvedTags.length === 0}
                   />
                 );
               })}
-            </>
-          )}
-        </Surface>
 
-        {/* Tags Section */}
-        {((isEditing && isSuperAdmin && tags.length > 0) || resolvedTags.length > 0) && (
-          <Surface style={styles.sectionSurface} elevation={1}>
-            <Text variant="titleMedium" style={styles.sectionTitle}>Tags & Groups</Text>
-            <Divider style={styles.divider} />
-            <View style={styles.tagsContainer}>
-              {isEditing && isSuperAdmin ? (
-                tags.map(tag => {
-                  const isSelected = (editForm.tags || []).includes(tag.id);
-                  return (
-                    <Chip
-                      key={tag.id}
-                      mode={isSelected ? "flat" : "outlined"}
-                      onPress={() => handleTagToggle(tag.id)}
-                      style={[styles.tagChip, isSelected && { backgroundColor: theme.colors.primaryContainer }]}
-                      textStyle={isSelected && { color: theme.colors.onPrimaryContainer }}
-                    >
-                      {tag.name}
-                    </Chip>
-                  );
-                })
-              ) : (
-                resolvedTags.map((tagName, i) => (
-                  <Chip key={i} style={styles.tagChip}>{tagName}</Chip>
-                ))
+              {resolvedTags.length > 0 && (
+                <View style={styles.tagDisplaySection}>
+                  <Text style={styles.subLabel}>Assigned Groups</Text>
+                  <View style={styles.chipWrap}>
+                    {resolvedTags.map((tagName, i) => (
+                      <AppChip key={i} selected={false}>{tagName}</AppChip>
+                    ))}
+                  </View>
+                </View>
               )}
             </View>
-          </Surface>
-        )}
+          )}
+        </AppSection>
 
-        {/* App Version & Updates Section */}
-        <Surface style={styles.sectionSurface} elevation={1}>
-          <Text variant="titleMedium" style={styles.sectionTitle}>App Version & Updates</Text>
-          <Divider style={styles.divider} />
-          <InfoRow label="Current Version" value="1.1.1" />
-          <Button
-            icon="cloud-refresh"
-            mode="outlined"
-            onPress={() => checkForUpdate(true)}
-            loading={isChecking}
-            disabled={isChecking || isDownloading}
-            style={[styles.actionBtnFull, { marginTop: 12 }]}
-          >
-            Check for Updates
-          </Button>
-        </Surface>
+        {/* Card 3: System & Account Actions */}
+        <AppSection title="System & Account">
+          <View style={styles.actionRow}>
+            <View>
+              <Text style={styles.actionTitle}>App Version</Text>
+              <Text style={styles.actionSub}>
+                v{APP_VERSION}{APP_RUNTIME ? ` (Runtime ${APP_RUNTIME})` : ''}
+              </Text>
+            </View>
+            <AppButton
+              variant="secondary"
+              size="sm"
+              onPress={() => checkForUpdate(true)}
+              loading={isChecking}
+              disabled={isChecking || isDownloading}
+              icon={<RefreshCw size={14} color={appColors.textPrimary} />}
+            >
+              Check Updates
+            </AppButton>
+          </View>
 
-        {/* Account Actions Section */}
-        <Surface style={styles.sectionSurface} elevation={1}>
-          <Text variant="titleMedium" style={styles.sectionTitle}>Account Actions</Text>
-          <Divider style={styles.divider} />
-          
+          <View style={styles.divider} />
+
           {!showMigration ? (
-            <Button icon="email-sync" mode="outlined" onPress={() => setShowMigration(true)} style={styles.actionBtnFull}>
-              Migrate Account Email
-            </Button>
+            <View style={styles.actionRow}>
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={styles.actionTitle}>Email Address</Text>
+                <Text style={styles.actionSub}>Migrate account to a different address</Text>
+              </View>
+              <AppButton
+                variant="secondary"
+                size="sm"
+                onPress={() => setShowMigration(true)}
+                icon={<Mail size={14} color={appColors.textPrimary} />}
+              >
+                Migrate Email
+              </AppButton>
+            </View>
           ) : (
-            <View style={styles.migrationContainer}>
-              <Text variant="bodyMedium" style={{ marginBottom: 12 }}>Enter your new email address. You will receive an email to verify the change.</Text>
-              <TextInput
-                label="New Email Address"
+            <View style={styles.migrationBox}>
+              <Text style={styles.actionTitle}>Migrate Account Email</Text>
+              <Text style={[styles.actionSub, { marginBottom: 12 }]}>
+                Enter your new email address. We will send a verification link.
+              </Text>
+              <AppInput
                 value={newEmail}
                 onChangeText={setNewEmail}
-                mode="outlined"
-                style={styles.input}
+                placeholder="new.email@example.com"
                 autoCapitalize="none"
                 keyboardType="email-address"
               />
-              <View style={styles.editActions}>
-                <Button mode="text" onPress={() => setShowMigration(false)} style={styles.actionBtn}>Cancel</Button>
-                <Button mode="contained" onPress={handleMigrate} loading={migrating} style={styles.actionBtn}>Request</Button>
+              <View style={styles.editBtnRow}>
+                <AppButton variant="ghost" size="sm" onPress={() => setShowMigration(false)} style={{ flex: 1, marginRight: 8 }}>
+                  Cancel
+                </AppButton>
+                <AppButton variant="primary" size="sm" onPress={handleMigrate} loading={migrating} style={{ flex: 1 }}>
+                  Request
+                </AppButton>
               </View>
             </View>
           )}
-          
-          <Button icon="logout" mode="contained-tonal" buttonColor={theme.colors.errorContainer} textColor={theme.colors.error} onPress={handleLogout} style={[styles.actionBtnFull, { marginTop: 16 }]}>
-            Sign Out
-          </Button>
-        </Surface>
-        
-        <View style={{ height: 40 }} />
+
+          <View style={styles.divider} />
+
+          <View style={styles.actionRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.actionTitle, { color: appColors.danger }]}>Sign Out</Text>
+              <Text style={styles.actionSub}>End your current session</Text>
+            </View>
+            <AppButton
+              variant="danger"
+              size="sm"
+              onPress={handleLogout}
+              icon={<LogOut size={14} color={appColors.danger} />}
+            >
+              Sign Out
+            </AppButton>
+          </View>
+        </AppSection>
+
+        <View style={{ height: 110 }} />
       </ScrollView>
-      
+
       <Snackbar
         visible={snackbar.visible}
         onDismiss={() => setSnackbar({ ...snackbar, visible: false })}
         duration={3000}
-        action={{ label: 'Dismiss', onPress: () => setSnackbar({ ...snackbar, visible: false }) }}
+        // The floating tab bar sits at bottom: 24 and stands 62 tall, so a
+        // default-positioned Snackbar renders behind it and reads as no
+        // feedback at all.
+        wrapperStyle={{ bottom: 96 }}
+        style={{ backgroundColor: appColors.elevatedSurface, borderColor: appColors.border, borderWidth: 1 }}
       >
-        {snackbar.message}
+        <Text style={{ color: appColors.textPrimary }}>{snackbar.message}</Text>
       </Snackbar>
     </View>
   );
 }
 
-const InfoRow = ({ label, value, isLink }) => {
-  const theme = useTheme();
-  return (
-    <View style={styles.infoRow}>
-      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 4 }}>{label}</Text>
-      <Text variant="bodyLarge" style={{ color: isLink ? theme.colors.primary : theme.colors.onSurface }}>
+const InfoRow = ({ label, value, isLink, isLast = false }) => (
+  <View style={[styles.infoRowContainer, isLast && { borderBottomWidth: 0 }]}>
+    <Text style={styles.infoLabel}>{label}</Text>
+    <View style={styles.infoValueWrap}>
+      <Text style={[styles.infoValue, isLink && styles.infoLink]} numberOfLines={2}>
         {value}
       </Text>
+      {isLink && <ExternalLink size={14} color={appColors.accent} style={{ marginLeft: 6 }} />}
     </View>
-  );
-};
+  </View>
+);
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
+    flex: 1,
+    backgroundColor: appColors.background,
+  },
+  content: {
+    padding: appSpacing.xxl,
   },
   center: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerSurface: {
-    padding: 24,
-    borderRadius: 16,
+  heroCard: {
+    padding: appSpacing.xl,
+  },
+  heroRow: {
+    flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
   },
-  avatarContainer: {
+  avatarWrapper: {
     position: 'relative',
-    marginBottom: 16,
+    marginRight: 16,
   },
-  editAvatarButton: {
+  avatarImg: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: appColors.border,
+  },
+  avatarFallback: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: appColors.elevatedSurface,
+    borderWidth: 1,
+    borderColor: appColors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    ...appTypography.sectionTitle,
+    color: appColors.textPrimary,
+  },
+  cameraBtn: {
     position: 'absolute',
-    bottom: -10,
-    right: -10,
+    bottom: -2,
+    right: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: appColors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: appColors.surface,
   },
-  headerName: {
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  chipContainer: {
-    flexDirection: 'row',
-    marginTop: 12,
-    marginBottom: 20,
-    gap: 8,
-  },
-  chip: {
-    borderRadius: 16,
-  },
-  editButton: {
-    width: '100%',
-    borderRadius: 8,
-  },
-  editActions: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  actionBtn: {
+  heroCopy: {
     flex: 1,
-    borderRadius: 8,
   },
-  actionBtnFull: {
-    width: '100%',
-    borderRadius: 8,
+  nameText: {
+    ...appTypography.sectionTitle,
+    fontSize: 20,
   },
-  sectionSurface: {
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 16,
+  emailText: {
+    ...appTypography.caption,
+    color: appColors.textMuted,
+    marginTop: 2,
   },
-  sectionTitle: {
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  divider: {
-    marginBottom: 16,
-  },
-  infoRow: {
-    marginBottom: 16,
-  },
-  input: {
-    marginBottom: 12,
-  },
-  tagsContainer: {
+  badgeRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  tagChip: {
-    borderRadius: 16,
-  },
-  migrationContainer: {
+    alignItems: 'center',
     marginTop: 8,
   },
+  heroActions: {
+    borderTopWidth: 1,
+    borderTopColor: appColors.border,
+    paddingTop: 14,
+  },
+  editBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  editFormContainer: {
+    paddingTop: 4,
+  },
+  infoRowContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: appColors.border,
+  },
+  infoLabel: {
+    ...appTypography.caption,
+    color: appColors.textSecondary,
+    flex: 1,
+  },
+  infoValueWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 2,
+    justifyContent: 'flex-end',
+  },
+  infoValue: {
+    ...appTypography.body,
+    fontWeight: '500',
+    textAlign: 'right',
+  },
+  infoLink: {
+    color: appColors.accent,
+  },
+  tagDisplaySection: {
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: appColors.border,
+  },
+  tagEditSection: {
+    marginTop: 8,
+  },
+  subLabel: {
+    ...appTypography.metadata,
+    textTransform: 'uppercase',
+    color: appColors.textMuted,
+    marginBottom: 10,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  actionTitle: {
+    ...appTypography.body,
+    fontWeight: '600',
+  },
+  actionSub: {
+    ...appTypography.caption,
+    color: appColors.textMuted,
+    marginTop: 2,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: appColors.border,
+    marginVertical: 14,
+  },
+  migrationBox: {
+    backgroundColor: appColors.elevatedSurface,
+    padding: appSpacing.lg,
+    borderRadius: appRadius.md,
+    borderWidth: 1,
+    borderColor: appColors.border,
+  },
 });
+

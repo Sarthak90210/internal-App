@@ -57,36 +57,26 @@ async function testScreensNavigation() {
     assert.strictEqual(navigation.lastOptions.title, 'Battery Packs');
   });
 
-  await runTest('[BUG VERIFICATION 1 IN SCREEN] FolderDetailScreen move modal onConfirm callback throws TypeError on moveInventory', async () => {
+  // Regression: FolderDetailScreen's onConfirm used to build its own argument
+  // list and crash. It now forwards (invId, dest, allInvs) like every other
+  // call site, so moving a sub-folder up to a list succeeds.
+  await runTest('FolderDetailScreen move modal onConfirm moves a sub-folder to a list', async () => {
     firestoreStore.set('inventories/inv_sub1', { id: 'inv_sub1', name: 'Sub-Inv 1', listId: 'l1', parentInventoryId: 'inv_100' });
-    
-    // Simulate what FolderDetailScreen onConfirm does for activeTab !== 'items':
+
     const selectedSet = new Set(['inv_sub1']);
     const dest = { type: 'list', id: 'list_destination', name: 'Target List' };
     const allInvs = [{ id: 'inv_sub1', listId: 'l1' }];
     const { InventoryService } = require('../src/services/inventory');
 
-    // Reproduce exact line 528-532 logic from FolderDetailScreen:
-    let caughtErr = null;
-    try {
-      await Promise.all(
-        Array.from(selectedSet).map(invId => 
-          InventoryService.moveInventory(
-            invId, 
-            dest.type === 'list' ? dest.id : (allInvs.find(i => i.id === dest.id)?.listId), 
-            dest.type === 'inventory' ? dest.id : null
-          )
-        )
-      );
-    } catch (err) {
-      caughtErr = err;
-    }
-
-    assert.ok(caughtErr, 'Expected FolderDetailScreen move logic to throw TypeError');
-    assert.ok(
-      caughtErr.message.includes('find is not a function') || caughtErr instanceof TypeError,
-      `Expected TypeError on allInvs.find, got: ${caughtErr.message}`
+    await Promise.all(
+      Array.from(selectedSet).map(invId =>
+        InventoryService.moveInventory(invId, dest, allInvs)
+      )
     );
+
+    const updated = firestoreStore.get('inventories/inv_sub1');
+    assert.strictEqual(updated.listId, 'list_destination');
+    assert.strictEqual(updated.parentInventoryId, null, 'moving to a list clears the parent');
   });
 
   await runTest('InventoryDetailScreen component render and list-scoped search', async () => {

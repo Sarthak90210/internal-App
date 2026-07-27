@@ -6,7 +6,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { useAuthStore } from '../stores/authStore';
 import { AuthService } from '../services/auth';
 import { useTheme } from 'react-native-paper';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { AppBottomNavigation } from '../components/design-system';
 
 // Screens
 import LoginScreen from '../screens/LoginScreen';
@@ -18,31 +18,13 @@ const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function MainTabs() {
-  const theme = useTheme();
   return (
     <Tab.Navigator
       initialRouteName="InventoryTab"
-      screenOptions={({ route }) => ({
+      tabBar={(props) => <AppBottomNavigation {...props} />}
+      screenOptions={{
         headerShown: false,
-        tabBarStyle: {
-          backgroundColor: theme.colors.surface,
-          borderTopColor: theme.colors.outline,
-          height: 72,
-          paddingBottom: 10,
-          paddingTop: 8,
-        },
-        tabBarItemStyle: { borderRadius: 18, marginHorizontal: 5 },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
-        tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: theme.colors.onSurfaceDisabled,
-        tabBarIcon: ({ color, size }) => {
-          let iconName;
-          if (route.name === 'InventoryTab') iconName = 'format-list-bulleted';
-          else if (route.name === 'AdminTab') iconName = 'shield-account';
-          else if (route.name === 'ProfileTab') iconName = 'account';
-          return <MaterialCommunityIcons name={iconName} size={size + 1} color={color} />;
-        },
-      })}
+      }}
     >
       <Tab.Screen name="InventoryTab" component={InventoryStack} options={{ title: 'Inventory' }} />
       <Tab.Screen name="AdminTab" component={AdminStack} options={{ title: 'Admin' }} />

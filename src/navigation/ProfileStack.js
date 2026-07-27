@@ -12,8 +12,9 @@ export default function ProfileStack() {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: theme.colors.surface },
+        headerStyle: { backgroundColor: theme.colors.background },
         headerTintColor: theme.colors.onSurface,
+        headerTitleStyle: { fontWeight: '700', fontSize: 17 },
         headerShadowVisible: false,
       }}
     >

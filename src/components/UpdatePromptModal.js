@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
-import { Portal, Dialog, Button, Text, Snackbar, useTheme } from 'react-native-paper';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { View, StyleSheet, ActivityIndicator, Pressable, Platform } from 'react-native';
+import { Text } from 'react-native-paper';
+import { CloudDownload, AlertCircle, CheckCircle2, X, Sparkles } from '../lib/lucideIcons';
 import { useUpdateStore } from '../stores/updateStore';
+import { AppModal, AppButton } from './design-system';
+import { appColors, appRadius, appSpacing, appTypography } from '../theme';
 
 export default function UpdatePromptModal() {
-  const theme = useTheme();
   const {
     isUpdateAvailable,
     isDownloading,
@@ -28,146 +29,155 @@ export default function UpdatePromptModal() {
 
   return (
     <>
-      <Portal>
-        <Dialog
-          visible={isUpdateAvailable}
-          onDismiss={isDownloading ? undefined : dismissPrompt}
-          style={[styles.dialog, { backgroundColor: theme.colors.surface }]}
-        >
-          <View style={styles.headerContainer}>
-            <View style={[styles.iconContainer, { backgroundColor: theme.colors.primaryContainer }]}>
-              <MaterialCommunityIcons
-                name="rocket-launch-outline"
-                size={32}
-                color={theme.colors.primary}
-              />
-            </View>
-            <Dialog.Title style={[styles.title, { color: theme.colors.onSurface }]}>
-              {isDownloading ? 'Updating RFV...' : 'Update Available'}
-            </Dialog.Title>
-          </View>
-
-          <Dialog.Content style={styles.content}>
-            {isDownloading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginBottom: 16 }} />
-                <Text variant="bodyMedium" style={[styles.message, { color: theme.colors.onSurfaceVariant }]}>
-                  Downloading and applying the latest update. The app will restart automatically in just a moment...
-                </Text>
-              </View>
-            ) : (
-              <Text variant="bodyMedium" style={[styles.message, { color: theme.colors.onSurfaceVariant }]}>
-                A new version of RFV is ready! It includes new features, performance improvements, and bug fixes. Would you like to install it now?
-              </Text>
-            )}
-          </Dialog.Content>
-
-          {!isDownloading && (
-            <Dialog.Actions style={styles.actions}>
-              <Button
-                mode="text"
+      <AppModal
+        visible={isUpdateAvailable}
+        onClose={isDownloading ? (() => {}) : dismissPrompt}
+        title={isDownloading ? 'Updating RFV Client...' : 'Update Available'}
+        footer={
+          !isDownloading ? (
+            <View style={styles.actionsRow}>
+              <AppButton
+                variant="ghost"
                 onPress={dismissPrompt}
-                textColor={theme.colors.onSurfaceVariant}
-                style={styles.button}
+                style={{ flex: 1, marginRight: 8 }}
               >
                 Later
-              </Button>
-              <Button
-                mode="contained"
+              </AppButton>
+              <AppButton
+                variant="primary"
                 onPress={downloadAndReload}
-                buttonColor={theme.colors.primary}
-                textColor={theme.colors.onPrimary}
-                style={styles.button}
-                icon="cloud-download-outline"
+                style={{ flex: 1 }}
+                icon={<CloudDownload size={16} color={appColors.background} />}
               >
                 Update Now
-              </Button>
-            </Dialog.Actions>
+              </AppButton>
+            </View>
+          ) : null
+        }
+      >
+        <View style={styles.contentContainer}>
+          <View style={styles.iconBox}>
+            {isDownloading ? (
+              <ActivityIndicator size="large" color={appColors.accent} />
+            ) : (
+              <Sparkles size={32} color={appColors.accent} />
+            )}
+          </View>
+
+          {isDownloading ? (
+            <View style={styles.textWrap}>
+              <Text style={styles.mainTitle}>Applying Update...</Text>
+              <Text style={styles.mainMessage}>
+                Downloading and applying the latest RFV binary build. The application will reboot automatically in just a moment.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.textWrap}>
+              <Text style={styles.mainTitle}>New Version Ready</Text>
+              <Text style={styles.mainMessage}>
+                A new version of RFV is ready! It includes new telemetry enhancements, visual upgrades, and performance optimizations. Would you like to install it now?
+              </Text>
+            </View>
           )}
-        </Dialog>
-      </Portal>
+        </View>
+      </AppModal>
 
-      {/* Error Snackbar */}
-      <Snackbar
-        visible={!!error}
-        onDismiss={clearError}
-        duration={5000}
-        style={{ backgroundColor: theme.colors.errorContainer }}
-        action={{
-          label: 'Dismiss',
-          labelStyle: { color: theme.colors.error },
-          onPress: clearError,
-        }}
-      >
-        <Text style={{ color: theme.colors.onErrorContainer }}>{error}</Text>
-      </Snackbar>
+      {/* Error Floating Toast */}
+      {error ? (
+        <View style={[styles.toastContainer, styles.toastError]}>
+          <AlertCircle size={20} color="#EF4444" style={{ marginRight: 10 }} />
+          <Text style={[styles.toastText, { color: '#EF4444' }]}>{error}</Text>
+          <Pressable onPress={clearError} style={styles.toastCloseBtn}>
+            <X size={16} color="#EF4444" />
+          </Pressable>
+        </View>
+      ) : null}
 
-      {/* Notice/Info Snackbar */}
-      <Snackbar
-        visible={!!notice}
-        onDismiss={clearNotice}
-        duration={4000}
-        style={{ backgroundColor: theme.colors.surfaceVariant }}
-        action={{
-          label: 'OK',
-          labelStyle: { color: theme.colors.primary },
-          onPress: clearNotice,
-        }}
-      >
-        <Text style={{ color: theme.colors.onSurface }}>{notice}</Text>
-      </Snackbar>
+      {/* Notice/Info Floating Toast */}
+      {notice ? (
+        <View style={[styles.toastContainer, styles.toastNotice]}>
+          <CheckCircle2 size={20} color={appColors.accent} style={{ marginRight: 10 }} />
+          <Text style={[styles.toastText, { color: appColors.textPrimary }]}>{notice}</Text>
+          <Pressable onPress={clearNotice} style={styles.toastCloseBtn}>
+            <X size={16} color={appColors.textSecondary} />
+          </Pressable>
+        </View>
+      ) : null}
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  dialog: {
-    borderRadius: 24,
-    paddingTop: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  headerContainer: {
+  actionsRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 16,
-    paddingHorizontal: 24,
   },
-  iconContainer: {
+  contentContainer: {
+    alignItems: 'center',
+    paddingVertical: appSpacing.md,
+  },
+  iconBox: {
     width: 64,
     height: 64,
-    borderRadius: 32,
+    borderRadius: appRadius.full,
+    backgroundColor: `${appColors.accent}15`,
+    borderWidth: 1,
+    borderColor: `${appColors.accent}30`,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  title: {
-    textAlign: 'center',
-    fontSize: 20,
-    fontWeight: '700',
-    marginHorizontal: 0,
-    paddingHorizontal: 0,
+  textWrap: {
+    alignItems: 'center',
+  },
+  mainTitle: {
+    ...appTypography.h2,
+    color: appColors.textPrimary,
     marginBottom: 8,
+    textAlign: 'center',
   },
-  content: {
-    paddingHorizontal: 24,
-    paddingTop: 8,
-    paddingBottom: 16,
-  },
-  loadingContainer: {
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  message: {
+  mainMessage: {
+    ...appTypography.body,
+    color: appColors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
+    paddingHorizontal: 10,
   },
-  actions: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    justifyContent: 'space-between',
+  toastContainer: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 40 : 24,
+    left: 20,
+    right: 20,
+    backgroundColor: appColors.surface,
+    borderWidth: 1,
+    borderRadius: appRadius.lg,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+    zIndex: 9999,
   },
-  button: {
-    borderRadius: 12,
-    minWidth: 100,
+  toastError: {
+    borderColor: '#EF444450',
+    backgroundColor: '#1C1315',
+  },
+  toastNotice: {
+    borderColor: `${appColors.accent}40`,
+    backgroundColor: appColors.elevatedSurface,
+  },
+  toastText: {
+    ...appTypography.bodyBold,
+    flex: 1,
+    fontSize: 13,
+  },
+  toastCloseBtn: {
+    padding: 4,
+    marginLeft: 8,
   },
 });
+

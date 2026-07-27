@@ -60,12 +60,6 @@ export const InventoryService = {
     });
   },
 
-  getAllItems: async () => {
-    const q = query(collection(db, 'items'));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  },
-
   // ─── LIST CRUD ────────────────────────────────────────────────────
 
   addList: async (name) => {
@@ -283,9 +277,9 @@ export const InventoryService = {
         where('removedDate', '==', null)
       );
       const histSnap = await getDocs(histQuery);
-      histSnap.forEach(async (docSnap) => {
-        await updateDoc(doc(db, 'inventory_hold_history', docSnap.id), { removedDate: now });
-      });
+      await Promise.all(histSnap.docs.map(docSnap =>
+        updateDoc(doc(db, 'inventory_hold_history', docSnap.id), { removedDate: now })
+      ));
     }
 
     // Add new hold history
@@ -512,6 +506,8 @@ export const InventoryService = {
           action,
           actionType: docData.action,
           details,
+          previousQuantity: docData.previousQuantity,
+          newQuantity: docData.newQuantity,
           userId: docData.userId,
           timestamp: new Date(docData.timestamp)
         };
@@ -523,60 +519,6 @@ export const InventoryService = {
       unsubHold();
       unsubItem();
     };
-  },
-
-  // ─── ORPHAN CLEANUP ───────────────────────────────────────────────
-
-  cleanupOrphans: async () => {
-    const listsSnap = await getDocs(query(collection(db, 'inventory_lists')));
-    const validListIds = new Set(listsSnap.docs.map(d => d.id));
-
-    const invSnap = await getDocs(query(collection(db, 'inventories')));
-    const allInvs = invSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    
-    const validInvIds = new Set();
-    const orphanedInvIds = new Set();
-    
-    allInvs.forEach(inv => {
-      if (validListIds.has(inv.listId)) {
-        validInvIds.add(inv.id);
-      } else {
-        orphanedInvIds.add(inv.id);
-      }
-    });
-
-    const deletePromises = [];
-    orphanedInvIds.forEach(invId => {
-      deletePromises.push(deleteDoc(doc(db, 'inventories', invId)));
-    });
-
-    const itemsSnap = await getDocs(query(collection(db, 'items')));
-    itemsSnap.docs.forEach(itemDoc => {
-      const data = itemDoc.data();
-      if (!validInvIds.has(data.inventoryId)) {
-        deletePromises.push(deleteDoc(doc(db, 'items', itemDoc.id)));
-      }
-    });
-
-    const itemHistSnap = await getDocs(query(collection(db, 'item_history')));
-    itemHistSnap.docs.forEach(histDoc => {
-      const data = histDoc.data();
-      if (!validInvIds.has(data.inventoryId)) {
-        deletePromises.push(deleteDoc(doc(db, 'item_history', histDoc.id)));
-      }
-    });
-
-    const holdHistSnap = await getDocs(query(collection(db, 'inventory_hold_history')));
-    holdHistSnap.docs.forEach(holdDoc => {
-      const data = holdDoc.data();
-      if (!validInvIds.has(data.inventoryId)) {
-        deletePromises.push(deleteDoc(doc(db, 'inventory_hold_history', holdDoc.id)));
-      }
-    });
-
-    await Promise.all(deletePromises);
-    await logInventoryAction('orphans_cleaned', null, `Removed ${deletePromises.length} orphaned records`);
-    return deletePromises.length;
   },
 
   // ─── MOVE WITH HISTORY ────────────────────────────────────────────

@@ -1,11 +1,24 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, FlatList, StyleSheet, Alert, Modal, ScrollView, Image } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { List, FAB, useTheme, ActivityIndicator, Text, Button, TextInput, Switch, IconButton, Divider, Searchbar } from 'react-native-paper';
-import * as ImagePicker from 'expo-image-picker';
+import { View, FlatList, StyleSheet, Alert, Image, Switch } from 'react-native';
+import { Text } from 'react-native-paper';
+import { Settings, Image as ImageIcon, FileText, Upload, CheckCircle2, Eye, EyeOff, DollarSign } from '../../lib/lucideIcons';
 import { SponsorsService } from '../../services/sponsors';
 import { useAuthStore } from '../../stores/authStore';
-import { uploadFile } from '../../services/adminApi';
+import { pickAndUploadMedia, buildFolder } from '../../lib/mediaUpload';
+import { 
+  AppSearchBar, 
+  AppListItem, 
+  AppFAB, 
+  AppModal, 
+  AppInput, 
+  AppButton, 
+  AppBadge, 
+  AppSkeleton, 
+  AppEmptyState,
+  AppSection,
+  AppCard
+} from '../../components/design-system';
+import { appColors, appRadius, appSpacing, appTypography } from '../../theme';
 
 const EMPTY_SPONSOR = {
   name: '',
@@ -24,7 +37,6 @@ const DEFAULT_PAGE_SETTINGS = {
 };
 
 export default function ManageSponsorsScreen() {
-  const theme = useTheme();
   const { user } = useAuthStore();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -77,7 +89,7 @@ export default function ManageSponsorsScreen() {
   };
 
   const handleDelete = (item) => {
-    Alert.alert('Confirm Delete', `Are you sure you want to delete ${item.name}?`, [
+    Alert.alert('Remove Sponsor', `Are you sure you want to remove "${item.name}" from the sponsor showcase?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => SponsorsService.deleteSponsor(item) }
     ]);
@@ -85,37 +97,31 @@ export default function ManageSponsorsScreen() {
 
   const handlePickImage = async () => {
     if (!formData.name) {
-      Alert.alert('Required', 'Please enter a name first.');
+      Alert.alert('Required Name', 'Please enter a sponsor name first to create a dedicated cloud folder.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-    });
+    setIsSaving(true);
+    try {
+      const result = await pickAndUploadMedia({
+        folder: buildFolder('sponsors', formData.name),
+        allowsEditing: false,
+      });
 
-    if (!result.canceled && result.assets.length > 0) {
-      const uri = result.assets[0].uri;
-      setIsSaving(true);
-      try {
-        const safeName = formData.name.trim().replace(/\s+/g, '-');
-        const folder = `sponsors/${safeName}`;
-        const { ok, data } = await uploadFile(uri, folder);
-        if (ok && data.secure_url) {
-          setFormData(prev => ({ ...prev, logo: data.secure_url }));
-        } else {
-          Alert.alert('Upload Failed', data.error || 'Failed to upload image');
-        }
-      } catch (err) {
-        Alert.alert('Error', err.message);
-      } finally {
-        setIsSaving(false);
+      if (result.canceled) return;
+
+      if (result.ok) {
+        setFormData(prev => ({ ...prev, logo: result.url }));
+      } else {
+        Alert.alert('Upload Failed', result.error);
       }
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleSave = async () => {
     if (!formData.name || !formData.logo) {
-      Alert.alert('Required', 'Name and Logo are required.');
+      Alert.alert('Required Fields', 'Sponsor Name and Logo are required to display on the website.');
       return;
     }
     
@@ -131,7 +137,7 @@ export default function ManageSponsorsScreen() {
       }
       setModalVisible(false);
     } catch (err) {
-      Alert.alert('Error', 'Failed to save sponsor');
+      Alert.alert('Error', 'Failed to save sponsor details');
     } finally {
       setIsSaving(false);
     }
@@ -142,226 +148,443 @@ export default function ManageSponsorsScreen() {
     try {
       await SponsorsService.updateSponsorSettings(pageSettings, user?.email);
       setSettingsModalVisible(false);
-      Alert.alert('Success', 'Page settings updated');
+      Alert.alert('Success', 'Sponsor page narrative and brochure updated successfully');
     } catch (err) {
-      Alert.alert('Error', 'Failed to save settings');
+      Alert.alert('Error', 'Failed to save sponsor page settings');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handlePickSettingsImage = async (type) => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: type === 'brochure' ? ImagePicker.MediaTypeOptions.All : ImagePicker.MediaTypeOptions.Images, // Simplified for brevity
-      quality: 0.8,
-    });
-    if (!result.canceled && result.assets.length > 0) {
-      const uri = result.assets[0].uri;
-      setIsSaving(true);
-      try {
-        const folder = type === 'teamImage' ? 'sponsor-us/team-image' : 'sponsor-us';
-        const { ok, data } = await uploadFile(uri, folder);
-        if (ok && data.secure_url) {
-          if (type === 'teamImage') {
-             setPageSettings(prev => ({ ...prev, teamImage: { url: data.secure_url, publicId: data.public_id || '' } }));
-          } else {
-             setPageSettings(prev => ({ ...prev, brochure: { url: data.secure_url, publicId: data.public_id || '', name: 'Uploaded Brochure' } }));
-          }
-        }
-      } catch(e) {
-        Alert.alert('Error', 'Failed to upload');
-      } finally {
-        setIsSaving(false);
+    setIsSaving(true);
+    try {
+      const result = await pickAndUploadMedia({
+        folder: type === 'teamImage' ? 'sponsor-us/team-image' : 'sponsor-us',
+        mediaTypes: type === 'brochure' ? ['images', 'videos'] : ['images'],
+        allowsEditing: false,
+      });
+
+      if (result.canceled) return;
+
+      if (!result.ok) {
+        Alert.alert('Upload Failed', result.error);
+        return;
       }
+
+      if (type === 'teamImage') {
+        setPageSettings(prev => ({
+          ...prev,
+          teamImage: { url: result.url, publicId: result.publicId },
+        }));
+      } else {
+        setPageSettings(prev => ({
+          ...prev,
+          brochure: { url: result.url, publicId: result.publicId, name: 'Sponsorship_Brochure.pdf' },
+        }));
+      }
+    } finally {
+      setIsSaving(false);
     }
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={{ padding: 16 }}>
-        <Searchbar
-          placeholder="Search sponsors..."
-          onChangeText={setSearchQuery}
-          value={searchQuery}
-          elevation={1}
-        />
+    <View style={styles.container}>
+      <View style={styles.topBar}>
+        <View style={{ flex: 1, marginRight: 12 }}>
+          <AppSearchBar
+            placeholder="Search sponsors by company name..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
+        <AppButton 
+          variant="secondary" 
+          icon={<Settings size={16} color={appColors.textPrimary} />} 
+          onPress={() => setSettingsModalVisible(true)}
+        >
+          Page Config
+        </AppButton>
       </View>
+
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 20 }} color={theme.colors.primary} />
+        <View style={styles.loadingWrap}>
+          <AppSkeleton width="100%" height={80} style={{ marginBottom: 12 }} />
+          <AppSkeleton width="100%" height={80} style={{ marginBottom: 12 }} />
+          <AppSkeleton width="100%" height={80} />
+        </View>
       ) : (
         <FlatList
+          keyboardShouldPersistTaps="handled"
           data={filteredItems}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingBottom: 80 }}
-          ListHeaderComponent={
-            <Button 
-               mode="contained-tonal" 
-               icon="cog" 
-               onPress={() => setSettingsModalVisible(true)}
-               style={{ marginHorizontal: 16, marginBottom: 8 }}
-            >
-              Edit Page Settings
-            </Button>
-          }
-          renderItem={({ item }) => (
-            <List.Item
-              title={item.name || 'Untitled Sponsor'}
-              description={`Order: ${item.order}`}
-              titleStyle={{ color: theme.colors.onSurface }}
-              descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
-              style={{ backgroundColor: theme.colors.surface, marginHorizontal: 16, marginVertical: 6, borderRadius: 8 }}
-              left={props => (
-                 item.logo ? 
-                  <Image source={{ uri: item.logo }} style={{ width: 50, height: 50, borderRadius: 25, margin: 8 }} />
-                  : <List.Icon {...props} icon="star" color={theme.colors.primary} />
-              )}
-              right={props => (
-                <View style={{ flexDirection: 'row' }}>
-                  <IconButton icon="pencil" iconColor={theme.colors.primary} onPress={() => openEditModal(item)} />
-                  <IconButton icon="delete" iconColor={theme.colors.error} onPress={() => handleDelete(item)} />
-                </View>
-              )}
-            />
-          )}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => {
+            const hasLogo = !!item.logo;
+            return (
+              <AppListItem
+                title={item.name || 'Untitled Sponsor'}
+                description={`${item.website || 'No website specified'} • Priority #${item.order}`}
+                leftIcon={
+                  hasLogo ? (
+                    <View style={styles.logoBox}>
+                      <Image source={{ uri: item.logo }} style={styles.logoImg} resizeMode="contain" />
+                    </View>
+                  ) : (
+                    <View style={[styles.iconBox, { backgroundColor: '#10B98115' }]}>
+                      <DollarSign size={20} color="#10B981" />
+                    </View>
+                  )
+                }
+                rightElement={
+                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                    <AppBadge variant={item.isActive !== false ? 'success' : 'danger'}>
+                      {item.isActive !== false ? 'ACTIVE' : 'HIDDEN'}
+                    </AppBadge>
+                  </View>
+                }
+                onPress={() => openEditModal(item)}
+                onDelete={() => handleDelete(item)}
+              />
+            );
+          }}
           ListEmptyComponent={
-            <Text style={{ textAlign: 'center', marginTop: 20, color: theme.colors.onSurfaceVariant }}>
-              No sponsors found.
-            </Text>
+            <AppEmptyState
+              title="No Sponsors Listed"
+              description={searchQuery ? "No sponsors matched your search criteria." : "Add corporate partners and sponsors to display on the public landing page."}
+              actionLabel={searchQuery ? undefined : "Add First Sponsor"}
+              onAction={searchQuery ? undefined : openAddModal}
+            />
           }
         />
       )}
-      <FAB
-        icon="plus"
-        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
-        color={theme.colors.onPrimary}
+
+      <AppFAB
+        label="Add Partner"
         onPress={openAddModal}
       />
 
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalVisible(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
-          <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface }]}>
-            <IconButton icon="close" onPress={() => setModalVisible(false)} />
-            <Text variant="titleLarge">{editingId ? 'Edit Sponsor' : 'Add Sponsor'}</Text>
-            <Button disabled={isSaving} onPress={handleSave}>Save</Button>
+      {/* Sponsor Add/Edit Modal */}
+      <AppModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        title={editingId ? 'Edit Sponsor Profile' : 'Add Corporate Sponsor'}
+        footer={
+          <View style={styles.modalFooter}>
+            <AppButton variant="ghost" onPress={() => setModalVisible(false)} style={{ flex: 1, marginRight: 8 }} disabled={isSaving}>
+              Cancel
+            </AppButton>
+            <AppButton variant="primary" onPress={handleSave} style={{ flex: 1 }} loading={isSaving}>
+              Save Partner Profile
+            </AppButton>
           </View>
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
-            <TextInput
-              label="Sponsor Name"
-              value={formData.name}
-              onChangeText={t => setFormData({...formData, name: t})}
-              style={styles.input}
-              mode="outlined"
-            />
-            <TextInput
-              label="Website URL"
-              value={formData.website}
-              onChangeText={t => setFormData({...formData, website: t})}
-              style={styles.input}
-              mode="outlined"
-              keyboardType="url"
-              autoCapitalize="none"
-            />
-            <TextInput
-              label="Order"
-              value={String(formData.order)}
-              onChangeText={t => setFormData({...formData, order: t})}
-              style={styles.input}
-              mode="outlined"
-              keyboardType="numeric"
-            />
-            
-            <View style={styles.switchRow}>
-              <Text>Active</Text>
-              <Switch value={formData.isActive} onValueChange={v => setFormData({...formData, isActive: v})} />
+        }
+      >
+        <AppInput
+          label="Company / Partner Name"
+          value={formData.name}
+          onChangeText={t => setFormData({...formData, name: t})}
+          placeholder="e.g. Altium, SolidWorks, BetaFPV"
+        />
+        <View style={{ marginTop: 16 }}>
+          <AppInput
+            label="Website URL"
+            value={formData.website}
+            onChangeText={t => setFormData({...formData, website: t})}
+            placeholder="https://www.sponsor.com"
+            autoCapitalize="none"
+            keyboardType="url"
+          />
+        </View>
+        <View style={{ marginTop: 16 }}>
+          <AppInput
+            label="Display Priority Order"
+            value={String(formData.order)}
+            onChangeText={t => setFormData({...formData, order: t})}
+            keyboardType="numeric"
+            placeholder="0 (lower numbers appear first)"
+          />
+        </View>
+
+        <View style={styles.switchBox}>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {formData.isActive ? <Eye size={16} color="#10B981" style={{ marginRight: 6 }} /> : <EyeOff size={16} color="#EF4444" style={{ marginRight: 6 }} />}
+              <Text style={styles.switchTitle}>Showcase Status</Text>
             </View>
-
-            <Divider style={{ marginVertical: 16 }} />
-            
-            <Text variant="titleMedium">Logo</Text>
-            {formData.logo ? (
-              <Image source={{ uri: formData.logo }} style={{ width: '100%', height: 100, resizeMode: 'contain', marginVertical: 8 }} />
-            ) : null}
-            <Button mode="outlined" onPress={handlePickImage} loading={isSaving} disabled={isSaving} style={{ marginTop: 8 }}>
-              {formData.logo ? 'Change Logo' : 'Upload Logo'}
-            </Button>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-
-      <Modal visible={settingsModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setSettingsModalVisible(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
-          <View style={[styles.modalHeader, { backgroundColor: theme.colors.surface }]}>
-            <IconButton icon="close" onPress={() => setSettingsModalVisible(false)} />
-            <Text variant="titleLarge">Page Settings</Text>
-            <Button disabled={isSaving} onPress={handleSaveSettings}>Save</Button>
+            <Text style={styles.switchSub}>If disabled, logo is hidden from the public website.</Text>
           </View>
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
-            <TextInput
-              label="Description"
-              value={pageSettings.description}
-              onChangeText={t => setPageSettings({...pageSettings, description: t})}
-              style={styles.input}
-              mode="outlined"
-              multiline
-            />
-             <TextInput
-              label="Why Sponsor Us"
-              value={pageSettings.whySponsorUs}
-              onChangeText={t => setPageSettings({...pageSettings, whySponsorUs: t})}
-              style={styles.input}
-              mode="outlined"
-              multiline
-            />
-            
-            <Divider style={{ marginVertical: 16 }} />
-            
-            <Text variant="titleMedium">Team Image</Text>
-            {pageSettings.teamImage?.url ? (
-              <Image source={{ uri: pageSettings.teamImage.url }} style={{ width: '100%', height: 150, resizeMode: 'cover', marginVertical: 8 }} />
-            ) : null}
-            <Button mode="outlined" onPress={() => handlePickSettingsImage('teamImage')} loading={isSaving} disabled={isSaving} style={{ marginTop: 8 }}>
-              Upload Team Image
-            </Button>
+          <Switch 
+            value={formData.isActive} 
+            onValueChange={v => setFormData({...formData, isActive: v})}
+            trackColor={{ false: appColors.border, true: appColors.accent }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
 
-             <Divider style={{ marginVertical: 16 }} />
-            
-            <Text variant="titleMedium">Brochure PDF</Text>
-            {pageSettings.brochure?.url ? (
-              <Text style={{ marginVertical: 8, color: theme.colors.primary }}>Current: {pageSettings.brochure.name || 'PDF Uploaded'}</Text>
-            ) : null}
-            <Button mode="outlined" onPress={() => handlePickSettingsImage('brochure')} loading={isSaving} disabled={isSaving} style={{ marginTop: 8 }}>
-              Upload Brochure
-            </Button>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
+        <AppSection title="Company Logo (.png / .svg / .jpg)" style={{ marginTop: appSpacing.xl }}>
+          <AppCard variant="surface" style={styles.imageCard}>
+            {formData.logo ? (
+              <View style={styles.imagePreviewWrap}>
+                <View style={styles.logoPreviewContainer}>
+                  <Image source={{ uri: formData.logo }} style={styles.logoPreview} resizeMode="contain" />
+                </View>
+                <View style={styles.imageSuccessBadge}>
+                  <CheckCircle2 size={14} color="#10B981" style={{ marginRight: 4 }} />
+                  <Text style={styles.imageSuccessText}>Uploaded to Cloud Storage</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.imagePlaceholder}>
+                <ImageIcon size={32} color={appColors.textMuted} />
+                <Text style={styles.imageHelper}>No partner logo uploaded yet.</Text>
+              </View>
+            )}
+            <AppButton 
+              variant="secondary" 
+              onPress={handlePickImage} 
+              loading={isSaving} 
+              disabled={isSaving}
+              style={{ marginTop: 12 }}
+              icon={<Upload size={16} color={appColors.textPrimary} />}
+            >
+              {formData.logo ? 'Replace Logo Asset' : 'Upload Logo Asset'}
+            </AppButton>
+          </AppCard>
+        </AppSection>
+      </AppModal>
+
+      {/* Sponsor Page Settings Modal */}
+      <AppModal
+        visible={settingsModalVisible}
+        onClose={() => setSettingsModalVisible(false)}
+        title="Sponsor Us Page Narrative"
+        footer={
+          <View style={styles.modalFooter}>
+            <AppButton variant="ghost" onPress={() => setSettingsModalVisible(false)} style={{ flex: 1, marginRight: 8 }} disabled={isSaving}>
+              Cancel
+            </AppButton>
+            <AppButton variant="primary" onPress={handleSaveSettings} style={{ flex: 1 }} loading={isSaving}>
+              Save Page Settings
+            </AppButton>
+          </View>
+        }
+      >
+        <AppInput
+          label="Page Intro & Description"
+          value={pageSettings.description}
+          onChangeText={t => setPageSettings({...pageSettings, description: t})}
+          placeholder="Tell prospective sponsors why supporting Team Rotor FPV accelerates aerospace engineering..."
+          multiline
+          numberOfLines={4}
+        />
+        <View style={{ marginTop: 16 }}>
+          <AppInput
+            label="Why Sponsor Us (Value Proposition)"
+            value={pageSettings.whySponsorUs}
+            onChangeText={t => setPageSettings({...pageSettings, whySponsorUs: t})}
+            placeholder="Detail the recruitment access, branding on competition drones, and media reach..."
+            multiline
+            numberOfLines={5}
+          />
+        </View>
+
+        <AppSection title="Team Showcase Photograph" style={{ marginTop: appSpacing.xl }}>
+          <AppCard variant="surface" style={styles.imageCard}>
+            {pageSettings.teamImage?.url ? (
+              <View style={styles.imagePreviewWrap}>
+                <Image source={{ uri: pageSettings.teamImage.url }} style={styles.bannerPreview} />
+                <View style={styles.imageSuccessBadge}>
+                  <CheckCircle2 size={14} color="#10B981" style={{ marginRight: 4 }} />
+                  <Text style={styles.imageSuccessText}>Team Image Active</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.imagePlaceholder}>
+                <ImageIcon size={32} color={appColors.textMuted} />
+                <Text style={styles.imageHelper}>No hero team photograph uploaded.</Text>
+              </View>
+            )}
+            <AppButton 
+              variant="secondary" 
+              onPress={() => handlePickSettingsImage('teamImage')} 
+              loading={isSaving} 
+              disabled={isSaving}
+              style={{ marginTop: 12 }}
+              icon={<Upload size={16} color={appColors.textPrimary} />}
+            >
+              Upload Team Photo
+            </AppButton>
+          </AppCard>
+        </AppSection>
+
+        <AppSection title="Sponsorship Prospectus Brochure (.pdf / doc)" style={{ marginTop: appSpacing.xl }}>
+          <AppCard variant="surface" style={styles.brochureCard}>
+            <View style={styles.brochureRow}>
+              <View style={[styles.iconBox, { backgroundColor: '#38BDF815', marginRight: 12 }]}>
+                <FileText size={20} color="#38BDF8" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.brochureTitle}>
+                  {pageSettings.brochure?.url ? (pageSettings.brochure.name || 'Sponsorship_Brochure.pdf') : 'No Brochure Attached'}
+                </Text>
+                <Text style={styles.brochureSub}>
+                  {pageSettings.brochure?.url ? 'Available for download on the Sponsor Us page' : 'Upload your sponsorship tier prospectus'}
+                </Text>
+              </View>
+            </View>
+            <AppButton 
+              variant="secondary" 
+              onPress={() => handlePickSettingsImage('brochure')} 
+              loading={isSaving} 
+              disabled={isSaving}
+              style={{ marginTop: 14, width: '100%' }}
+              icon={<Upload size={16} color={appColors.textPrimary} />}
+            >
+              {pageSettings.brochure?.url ? 'Replace Brochure File' : 'Upload Brochure PDF'}
+            </AppButton>
+          </AppCard>
+        </AppSection>
+      </AppModal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  fab: {
-    position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 16,
-    borderRadius: 16,
+  container: { 
+    flex: 1,
+    backgroundColor: appColors.background, 
   },
-  modalHeader: {
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: appSpacing.xl,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  loadingWrap: {
+    padding: appSpacing.xl,
+  },
+  listContent: {
+    padding: appSpacing.xl,
+    paddingBottom: 100,
+  },
+  iconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: appRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoBox: {
+    width: 52,
+    height: 52,
+    borderRadius: appRadius.md,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 6,
+    borderWidth: 1,
+    borderColor: appColors.border,
+  },
+  logoImg: {
+    width: '100%',
+    height: '100%',
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  switchBox: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 8,
-    elevation: 4
+    backgroundColor: appColors.surface,
+    borderWidth: 1,
+    borderColor: appColors.border,
+    padding: appSpacing.lg,
+    borderRadius: appRadius.md,
+    marginTop: 20,
   },
-  input: {
-    marginBottom: 12
+  switchTitle: {
+    ...appTypography.bodyBold,
+    color: appColors.textPrimary,
   },
-  switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  switchSub: {
+    ...appTypography.caption,
+    color: appColors.textSecondary,
+    marginTop: 2,
+  },
+  imageCard: {
+    padding: appSpacing.lg,
     alignItems: 'center',
-    marginTop: 8
-  }
+  },
+  imagePreviewWrap: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  logoPreviewContainer: {
+    width: '100%',
+    height: 120,
+    backgroundColor: '#FFFFFF',
+    borderRadius: appRadius.md,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: appColors.border,
+  },
+  logoPreview: {
+    width: '100%',
+    height: '100%',
+  },
+  bannerPreview: {
+    width: '100%',
+    height: 160,
+    borderRadius: appRadius.md,
+    backgroundColor: appColors.background,
+  },
+  imageSuccessBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  imageSuccessText: {
+    ...appTypography.captionBold,
+    color: '#10B981',
+  },
+  imagePlaceholder: {
+    width: '100%',
+    height: 110,
+    borderRadius: appRadius.md,
+    borderWidth: 1,
+    borderColor: appColors.border,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: `${appColors.background}80`,
+  },
+  imageHelper: {
+    ...appTypography.caption,
+    color: appColors.textMuted,
+    marginTop: 8,
+  },
+  brochureCard: {
+    padding: appSpacing.lg,
+  },
+  brochureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  brochureTitle: {
+    ...appTypography.bodyBold,
+    color: appColors.textPrimary,
+  },
+  brochureSub: {
+    ...appTypography.caption,
+    color: appColors.textSecondary,
+    marginTop: 2,
+  },
 });
+

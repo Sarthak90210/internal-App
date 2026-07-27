@@ -1,86 +1,141 @@
 import React from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
-import { Card, Text, useTheme, IconButton } from 'react-native-paper';
+import { Text } from 'react-native-paper';
+import { 
+  Images, 
+  Award, 
+  Layout, 
+  Trophy, 
+  Users, 
+  Calendar, 
+  MessageSquare, 
+  UserCog, 
+  ChevronRight 
+} from '../../lib/lucideIcons';
 import { useAuthStore } from '../../stores/authStore';
+import { AppCard } from '../../components/design-system';
+import { appColors, appRadius, appSpacing, appTypography } from '../../theme';
 
 const adminModules = [
-  { title: "Gallery", route: "ManageGallery", icon: "image-multiple", permission: "media" },
-  { title: "Sponsors", route: "ManageSponsors", icon: "handshake", permission: "board" },
-  { title: "Home Page", route: "ManageHomeSettings", icon: "home-edit", permission: "admin" },
-  { title: "Achievements", route: "ManageAchievements", icon: "trophy", permission: "board" },
-  { title: "Board", route: "ManageTeam", icon: "account-group", permission: "board" },
-  { title: "Events", route: "ManageEvents", icon: "calendar", permission: "board" },
-  { title: "Messages", route: "ManageContactMessages", icon: "message-text", permission: "board" },
-  { title: "Team Members", route: "ManageTeamMembers", icon: "account-cog", permission: "superAdmin" },
+  { title: "Gallery", route: "ManageGallery", icon: Images, permission: "media", color: "#38BDF8", desc: "Photos & videos" },
+  { title: "Sponsors", route: "ManageSponsors", icon: Award, permission: "board", color: "#A855F7", desc: "Partners & tiers" },
+  { title: "Home Page", route: "ManageHomeSettings", icon: Layout, permission: "admin", color: "#3B82F6", desc: "Hero & announcements" },
+  { title: "Achievements", route: "ManageAchievements", icon: Trophy, permission: "board", color: "#F59E0B", desc: "Awards & milestones" },
+  { title: "Board", route: "ManageTeam", icon: Users, permission: "board", color: "#EC4899", desc: "Leadership structure" },
+  { title: "Events", route: "ManageEvents", icon: Calendar, permission: "board", color: "#10B981", desc: "Schedule & RSVP" },
+  { title: "Messages", route: "ManageContactMessages", icon: MessageSquare, permission: "board", color: "#6366F1", desc: "Inquiries & inbox" },
+  { title: "Team Members", route: "ManageTeamMembers", icon: UserCog, permission: "superAdmin", color: "#8B5CF6", desc: "Roster & permissions" },
 ];
 
 export default function AdminDashboardScreen({ navigation }) {
-  const theme = useTheme();
   const { hasPermission } = useAuthStore();
 
-  const getIconColor = (permission) => {
-    switch (permission) {
-      case 'inventory': return theme.colors.warning;
-      case 'board': return theme.colors.error;
-      case 'media': return theme.colors.success;
-      case 'admin': return theme.colors.primary;
-      default: return theme.colors.primary;
-    }
-  };
-
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Text variant="headlineSmall" style={{ color: theme.colors.onBackground, margin: 16, fontWeight: 'bold' }}>
-        Dashboard Overview
-      </Text>
+    <ScrollView 
+      keyboardShouldPersistTaps="handled"
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.header}>
+        <Text style={styles.title}>Dashboard Overview</Text>
+        <Text style={styles.subtitle}>Select a module to manage platform data and configuration</Text>
+      </View>
       
       <View style={styles.grid}>
         {adminModules.map((module) => {
-          // Verify if user has permission to see this module
           const canAccess = hasPermission(module.permission);
-          
           if (!canAccess) return null;
 
+          const IconComponent = module.icon;
+
           return (
-            <Card 
-              key={module.route}
-              style={styles.card} 
-              onPress={() => navigation.navigate(module.route)}
-            >
-              <Card.Content>
-                <IconButton 
-                  icon={module.icon} 
-                  size={30} 
-                  iconColor={getIconColor(module.permission)} 
-                  style={styles.icon} 
-                />
-                <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>{module.title}</Text>
-                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Manage {module.title.toLowerCase()}</Text>
-              </Card.Content>
-            </Card>
+            <View key={module.route} style={styles.cardWrapper}>
+              <AppCard 
+                style={styles.card} 
+                onPress={() => navigation.navigate(module.route)}
+                elevated={false}
+              >
+                <View style={styles.cardTop}>
+                  <View style={[styles.iconBox, { backgroundColor: `${module.color}15`, borderColor: `${module.color}30` }]}>
+                    <IconComponent size={18} color={module.color} />
+                  </View>
+                  <ChevronRight size={16} color={appColors.textMuted} />
+                </View>
+                
+                <Text style={styles.moduleTitle}>{module.title}</Text>
+                <Text style={styles.moduleDesc} numberOfLines={1}>{module.desc}</Text>
+              </AppCard>
+            </View>
           );
         })}
       </View>
+      
+      <View style={{ height: 40 }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { 
+    flex: 1, 
+    backgroundColor: appColors.background,
+  },
+  content: {
+    padding: appSpacing.xl,
+  },
+  header: {
+    marginBottom: appSpacing.xl,
+  },
+  title: {
+    ...appTypography.pageTitle,
+    fontSize: 24,
+    color: appColors.textPrimary,
+  },
+  subtitle: {
+    ...appTypography.caption,
+    color: appColors.textMuted,
+    marginTop: 4,
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    padding: 8,
+    marginHorizontal: -6,
+  },
+  cardWrapper: {
+    width: '50%',
+    paddingHorizontal: 6,
+    marginBottom: 12,
   },
   card: {
-    width: '45%',
-    margin: '2.5%',
-    marginBottom: 16,
+    padding: appSpacing.lg,
+    height: 124,
+    justifyContent: 'space-between',
   },
-  icon: {
-    margin: 0,
-    marginBottom: 8,
-    alignSelf: 'flex-start',
-    marginLeft: -8,
-  }
+  cardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  iconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: appRadius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  moduleTitle: {
+    ...appTypography.sectionTitle,
+    fontSize: 15,
+    color: appColors.textPrimary,
+    marginBottom: 2,
+  },
+  moduleDesc: {
+    ...appTypography.caption,
+    fontSize: 12,
+    color: appColors.textSecondary,
+  },
 });
+

@@ -1,6 +1,6 @@
-import { collection, query, onSnapshot, orderBy, updateDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { logAdminAction, deleteCloudinaryImage } from './adminApi';
+import { logAdminAction } from './adminApi';
 
 export const UsersService = {
   subscribeToUsers: (callback) => {

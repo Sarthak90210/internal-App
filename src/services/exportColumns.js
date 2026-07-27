@@ -11,15 +11,3 @@ export const EXPORT_COLUMNS = [
   { key: 'previousModified', header: 'Previous Modified', width: 22 },
   { key: 'previousModifiedBy', header: 'Previous Modified By', width: 20 }
 ];
-
-/**
- * Converts array of snapshot item objects into a 2D array of rows using EXPORT_COLUMNS or custom column selection.
- */
-export const convertSnapshotToRows = (items = [], columns = EXPORT_COLUMNS) => {
-  return items.map(item => {
-    return columns.map(col => {
-      const val = item[col.key];
-      return val !== undefined && val !== null ? val : '';
-    });
-  });
-};

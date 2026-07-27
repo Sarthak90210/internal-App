@@ -1,21 +1,31 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, StyleSheet, Alert, Modal, ScrollView, Image, SectionList, TouchableOpacity } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Text, useTheme, Card, Button, IconButton, Searchbar, TextInput, Divider, FAB, Chip, Surface, ActivityIndicator, Checkbox } from 'react-native-paper';
+import { View, StyleSheet, Alert, ScrollView, Image, SectionList, Pressable } from 'react-native';
+import { Text } from 'react-native-paper';
+import { User, UserCheck, UserX, Tag, Archive, Trash2, RotateCcw, CheckSquare, Square, AlertTriangle } from '../../lib/lucideIcons';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { UsersService } from '../../services/users';
 import { CustomFieldsService } from '../../services/customFields';
 import { JoinRequestsService } from '../../services/joinRequests';
 import { TagsService } from '../../services/tags';
-import { useAuthStore } from '../../stores/authStore';
-import { uploadFile, apiPost, fetchAdmins, syncUserPermissions, logAdminAction } from '../../services/adminApi';
+import { apiPost, fetchAdmins, syncUserPermissions } from '../../services/adminApi';
 import { expandTagIds, getGrantedTagIds } from '../../lib/tagGrants';
-import * as ImagePicker from 'expo-image-picker';
+import { 
+  AppSearchBar, 
+  AppChip, 
+  AppCard, 
+  AppButton, 
+  AppBadge, 
+  AppFAB, 
+  AppModal, 
+  AppInput, 
+  AppSkeleton, 
+  AppEmptyState,
+  AppSection
+} from '../../components/design-system';
+import { appColors, appRadius, appSpacing, appTypography } from '../../theme';
 
 export default function ManageTeamMembersScreen() {
-  const theme = useTheme();
-  const { user } = useAuthStore();
   
   const [users, setUsers] = useState([]);
   const [joinRequests, setJoinRequests] = useState([]);
@@ -29,7 +39,6 @@ export default function ManageTeamMembersScreen() {
   
   // Modal State
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({});
@@ -120,23 +129,22 @@ export default function ManageTeamMembersScreen() {
         tags: [], 
         customFields: req.customFields || {} 
       });
-      Alert.alert('Success', 'Request approved!');
+      Alert.alert('Success', 'Member application approved and account created!');
     } catch (error) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', error.message || 'Failed to approve application.');
     }
   };
 
   const handleRejectRequest = async (reqId) => {
     try {
       await JoinRequestsService.rejectRequest(reqId);
-      Alert.alert('Success', 'Request rejected.');
+      Alert.alert('Success', 'Application rejected.');
     } catch (error) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', error.message || 'Failed to reject application.');
     }
   };
 
   const openAddModal = () => {
-    setSelectedUser(null);
     setIsEditing(false);
     setFormData({ email: '', tags: [], customFields: {} });
     setSelectedTags([]);
@@ -144,7 +152,6 @@ export default function ManageTeamMembersScreen() {
   };
 
   const openEditModal = (u) => {
-    setSelectedUser(u);
     setIsEditing(true);
     setFormData({ ...u, customFields: u.customFields || {} });
     setSelectedTags(u.tags || []);
@@ -153,7 +160,7 @@ export default function ManageTeamMembersScreen() {
 
   const handleSaveUser = async () => {
     if (!formData.email) {
-      Alert.alert('Error', 'Email is required');
+      Alert.alert('Required Field', 'Email address is required to register or modify a team member.');
       return;
     }
     
@@ -169,7 +176,7 @@ export default function ManageTeamMembersScreen() {
           customFields: formData.customFields 
         });
         if (!res.ok) {
-          throw new Error(res.data?.error || 'Failed to create user');
+          throw new Error(res.data?.error || 'Failed to create user account.');
         }
       } else {
         const payload = {
@@ -190,9 +197,9 @@ export default function ManageTeamMembersScreen() {
       });
       
       setModalVisible(false);
-      Alert.alert('Success', `User ${isEditing ? 'updated' : 'added'} successfully.`);
+      Alert.alert('Success', `Team member ${isEditing ? 'updated' : 'registered'} successfully.`);
     } catch (error) {
-      Alert.alert('Error', error.message || 'Failed to save user');
+      Alert.alert('Error', error.message || 'Failed to save member profile.');
     } finally {
       setSaving(false);
     }
@@ -200,8 +207,8 @@ export default function ManageTeamMembersScreen() {
 
   const handleArchiveUser = async (email) => {
     Alert.alert(
-      'Archive User',
-      'Are you sure you want to archive this user?',
+      'Archive Member',
+      'Are you sure you want to archive this user? They will lose active platform access.',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -210,7 +217,7 @@ export default function ManageTeamMembersScreen() {
           onPress: async () => {
             try {
               await UsersService.archiveUser(email);
-              Alert.alert('Success', 'User archived.');
+              Alert.alert('Success', 'Member archived.');
             } catch (err) {
               Alert.alert('Error', err.message);
             }
@@ -223,7 +230,7 @@ export default function ManageTeamMembersScreen() {
   const handleRestoreUser = async (email) => {
     try {
       await setDoc(doc(db, 'users', email), { isActive: true, isArchived: false }, { merge: true });
-      Alert.alert('Success', 'User restored.');
+      Alert.alert('Success', 'Member account restored to active status.');
     } catch (err) {
       Alert.alert('Error', err.message);
     }
@@ -231,12 +238,12 @@ export default function ManageTeamMembersScreen() {
 
   const handleDeleteUser = async (email) => {
     Alert.alert(
-      'Delete User',
-      'Are you sure you want to permanently delete this user? This cannot be undone.',
+      'Permanent Deletion',
+      'Are you sure you want to permanently delete this account? All associated user records and permissions will be wiped.',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Delete', 
+          text: 'Delete Permanently', 
           style: 'destructive',
           onPress: async () => {
             try {
@@ -272,62 +279,64 @@ export default function ManageTeamMembersScreen() {
     });
   };
 
-  const pickImage = async () => {
-    let result;
-    try {
-      result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.5,
-      });
-    } catch (error) {
-      console.error("Image picking error:", error);
-      Alert.alert("Error", "Failed to pick image");
-      return;
-    }
-
-    if (!result.canceled && result.assets.length > 0) {
-      const asset = result.assets[0];
-      setSaving(true);
-      try {
-        const folder = `users/${formData.email.toLowerCase()}`;
-        const { ok, data } = await uploadFile(asset.uri, folder);
-        if (ok && data?.secure_url) {
-          setFormData({ ...formData, image: data.secure_url });
-        } else {
-          Alert.alert('Upload Error', data?.error || 'Failed to upload image');
-        }
-      } catch (err) {
-        Alert.alert('Upload Error', err.message);
-      } finally {
-        setSaving(false);
-      }
-    }
-  };
-
   const renderJoinRequests = () => {
     if (joinRequests.length === 0) return null;
     return (
       <View style={styles.requestsContainer}>
-        <Text variant="titleMedium" style={styles.sectionTitle}>Pending Join Requests</Text>
+        <View style={styles.reqHeaderRow}>
+          <View style={[styles.iconBox, { backgroundColor: '#F59E0B15' }]}>
+            <AlertTriangle size={18} color="#F59E0B" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.reqTitle}>Pending Join Applications ({joinRequests.length})</Text>
+            <Text style={styles.reqSub}>Review applicants wishing to join the engineering team repository</Text>
+          </View>
+        </View>
         {joinRequests.map(req => (
-          <Card key={req.id} style={[styles.requestCard, { borderColor: theme.colors.warning }]}>
-            <Card.Content>
-              <Text variant="titleMedium">{req.name || 'No Name'}</Text>
-              <Text variant="bodyMedium">{req.email}</Text>
-              {req.customFields && Object.entries(req.customFields).map(([fieldId, value]) => {
-                const fieldName = customFields.find(f => f.id === fieldId)?.name || fieldId;
-                return (
-                  <Text key={fieldId} variant="bodySmall" style={{ marginTop: 2 }}>{fieldName}: {value}</Text>
-                );
-              })}
-            </Card.Content>
-            <Card.Actions>
-              <Button mode="outlined" textColor={theme.colors.error} onPress={() => handleRejectRequest(req.id)}>Reject</Button>
-              <Button mode="contained" buttonColor={theme.colors.success} onPress={() => handleApproveRequest(req)}>Approve</Button>
-            </Card.Actions>
-          </Card>
+          <AppCard key={req.id} variant="elevated" style={styles.reqCard}>
+            <View style={styles.reqCardHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.reqName}>{req.name || 'Anonymous Applicant'}</Text>
+                <Text style={styles.reqEmail}>{req.email}</Text>
+              </View>
+              <AppBadge variant="warning">AWAITING APPROVAL</AppBadge>
+            </View>
+
+            {req.customFields && Object.keys(req.customFields).length > 0 ? (
+              <View style={styles.reqFieldsBox}>
+                {Object.entries(req.customFields).map(([fieldId, value]) => {
+                  const fieldName = customFields.find(f => f.id === fieldId)?.name || fieldId;
+                  return (
+                    <View key={fieldId} style={styles.reqFieldItem}>
+                      <Text style={styles.reqFieldLabel}>{fieldName}:</Text>
+                      <Text style={styles.reqFieldValue}>{value}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            <View style={styles.reqActions}>
+              <AppButton 
+                variant="ghost" 
+                size="sm" 
+                onPress={() => handleRejectRequest(req.id)}
+                style={{ flex: 1, marginRight: 8 }}
+                icon={<UserX size={14} color="#EF4444" />}
+              >
+                Reject
+              </AppButton>
+              <AppButton 
+                variant="primary" 
+                size="sm" 
+                onPress={() => handleApproveRequest(req)}
+                style={{ flex: 1 }}
+                icon={<UserCheck size={14} color={appColors.background} />}
+              >
+                Approve & Register
+              </AppButton>
+            </View>
+          </AppCard>
         ))}
       </View>
     );
@@ -335,307 +344,449 @@ export default function ManageTeamMembersScreen() {
 
   const renderMember = ({ item }) => {
     return (
-      <Card style={styles.memberCard} onPress={() => !item.isArchived && openEditModal(item)}>
-        <Card.Title
-          title={item.name || item.email}
-          subtitle={item.email}
-          left={(props) => item.image ? <Image source={{ uri: item.image }} style={styles.avatar} /> : <IconButton {...props} icon="account" />}
-          right={(props) => (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {item.isArchived ? (
-                <>
-                  <Chip style={{ marginRight: 8, backgroundColor: theme.colors.errorContainer }} textStyle={{ color: theme.colors.error }}>Archived</Chip>
-                  <IconButton {...props} icon="restore" iconColor={theme.colors.success} onPress={() => handleRestoreUser(item.email)} />
-                  <IconButton {...props} icon="delete-forever" iconColor={theme.colors.error} onPress={() => handleDeleteUser(item.email)} />
-                </>
-              ) : (
-                <>
-                  <Chip style={{ marginRight: 8, backgroundColor: theme.colors.surfaceVariant }}>
-                    {item.status === 'active' || !item.status ? 'Active' : item.status}
-                  </Chip>
-                  <IconButton {...props} icon="delete-outline" iconColor={theme.colors.error} onPress={() => handleArchiveUser(item.email)} />
-                </>
-              )}
+      <AppCard 
+        variant="surface" 
+        style={styles.memberCard}
+        onPress={() => !item.isArchived && openEditModal(item)}
+      >
+        <View style={styles.memberHeaderRow}>
+          <View style={styles.memberAvatarBox}>
+            {item.image ? (
+              <Image source={{ uri: item.image }} style={styles.avatarImg} />
+            ) : (
+              <User size={20} color={appColors.textSecondary} />
+            )}
+          </View>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.memberName}>{item.name || item.email}</Text>
+              {item.isOrphanedAdmin ? (
+                <AppBadge variant="warning">ORPHANED ADMIN</AppBadge>
+              ) : null}
             </View>
-          )}
-        />
-        <Card.Content>
-          {item.isOrphanedAdmin && (
-            <Text style={{ color: theme.colors.warning, fontSize: 12, marginBottom: 8 }}>
-              {"This admin doesn't have a full profile yet. Click Edit to create one."}
-            </Text>
-          )}
-          <View style={styles.tagsRow}>
-            {item.tags?.map(tid => {
+            <Text style={styles.memberEmail}>{item.email}</Text>
+          </View>
+
+          <View style={styles.memberActions}>
+            {item.isArchived ? (
+              <>
+                <AppBadge variant="danger">ARCHIVED</AppBadge>
+                <Pressable onPress={() => handleRestoreUser(item.email)} style={styles.iconBtn}>
+                  <RotateCcw size={16} color="#10B981" />
+                </Pressable>
+                <Pressable onPress={() => handleDeleteUser(item.email)} style={styles.iconBtnDanger}>
+                  <Trash2 size={16} color="#EF4444" />
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <AppBadge variant="success">ACTIVE</AppBadge>
+                <Pressable onPress={() => handleArchiveUser(item.email)} style={styles.iconBtn}>
+                  <Archive size={16} color={appColors.textSecondary} />
+                </Pressable>
+              </>
+            )}
+          </View>
+        </View>
+
+        {item.tags && item.tags.length > 0 ? (
+          <View style={styles.memberTagsRow}>
+            {item.tags.map(tid => {
               const tagObj = tags.find(t => t.id === tid);
-              return tagObj ? <Chip key={tid} style={styles.tagChip} textStyle={styles.tagText}>{tagObj.name}</Chip> : null;
+              if (!tagObj) return null;
+              return (
+                <View key={tid} style={styles.tagBadge}>
+                  <Tag size={10} color={appColors.accent} style={{ marginRight: 4 }} />
+                  <Text style={styles.tagBadgeText}>{tagObj.name}</Text>
+                </View>
+              );
             })}
           </View>
-        </Card.Content>
-      </Card>
+        ) : null}
+      </AppCard>
     );
   };
 
-  if (loading) {
-    return (
-      <View style={[styles.container, { justifyContent: 'center' }]}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
-
   return (
-    <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
-      <Searchbar
-        placeholder="Search members..."
-        onChangeText={setSearchQuery}
-        value={searchQuery}
-        style={styles.searchbar}
-      />
-      
-      <View style={{ marginBottom: 16 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
-          <Chip 
-            selected={selectedTagFilter === 'all'} 
-            onPress={() => setSelectedTagFilter('all')}
-            style={{ backgroundColor: selectedTagFilter === 'all' ? theme.colors.primary : theme.colors.surfaceVariant }}
-            textStyle={{ color: selectedTagFilter === 'all' ? theme.colors.onPrimary : theme.colors.onSurface }}
-          >
-            All Members
-          </Chip>
-          <Chip 
-            selected={selectedTagFilter === 'untagged'} 
-            onPress={() => setSelectedTagFilter('untagged')}
-            style={{ backgroundColor: selectedTagFilter === 'untagged' ? theme.colors.primary : theme.colors.surfaceVariant }}
-            textStyle={{ color: selectedTagFilter === 'untagged' ? theme.colors.onPrimary : theme.colors.onSurface }}
-          >
-            Untagged
-          </Chip>
-          <Chip 
-            selected={selectedTagFilter === 'archived'} 
-            onPress={() => setSelectedTagFilter('archived')}
-            style={{ backgroundColor: selectedTagFilter === 'archived' ? theme.colors.primary : theme.colors.surfaceVariant }}
-            textStyle={{ color: selectedTagFilter === 'archived' ? theme.colors.onPrimary : theme.colors.onSurface }}
-          >
-            Archived
-          </Chip>
-          {tags.filter(t => t.isGroup !== false).map(t => (
-            <Chip 
-              key={t.id}
-              selected={selectedTagFilter === t.id} 
-              onPress={() => setSelectedTagFilter(t.id)}
-              style={{ backgroundColor: selectedTagFilter === t.id ? theme.colors.primary : theme.colors.surfaceVariant }}
-              textStyle={{ color: selectedTagFilter === t.id ? theme.colors.onPrimary : theme.colors.onSurface }}
+    <View style={styles.container}>
+      <View style={styles.headerArea}>
+        <AppSearchBar
+          placeholder="Search team members by name or email..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        <View style={styles.filterRow}>
+          <ScrollView horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+            <AppChip 
+              selected={selectedTagFilter === 'all'}
+              onPress={() => setSelectedTagFilter('all')}
             >
-              {t.name}
-            </Chip>
-          ))}
-        </ScrollView>
+              All Members
+            </AppChip>
+            <AppChip 
+              selected={selectedTagFilter === 'untagged'}
+              onPress={() => setSelectedTagFilter('untagged')}
+            >
+              Untagged
+            </AppChip>
+            <AppChip 
+              selected={selectedTagFilter === 'archived'}
+              onPress={() => setSelectedTagFilter('archived')}
+            >
+              Archived
+            </AppChip>
+            {tags.filter(t => t.isGroup !== false).map(t => (
+              <AppChip 
+                key={t.id}
+                selected={selectedTagFilter === t.id}
+                onPress={() => setSelectedTagFilter(t.id)}
+              >
+                {t.name}
+              </AppChip>
+            ))}
+          </ScrollView>
+        </View>
       </View>
-      
-      <SectionList
-        sections={sections}
-        keyExtractor={(item) => item.email}
-        renderItem={renderMember}
-        renderSectionHeader={({ section: { title } }) => (
-          <Surface style={styles.sectionHeaderSurface} elevation={1}>
-            <Text variant="titleMedium" style={styles.sectionHeader}>{title}</Text>
-          </Surface>
-        )}
-        ListHeaderComponent={renderJoinRequests}
-        contentContainerStyle={styles.listContent}
-        stickySectionHeadersEnabled={false}
-      />
 
-      <FAB
-        icon="plus"
-        style={styles.fab}
+      {loading ? (
+        <View style={styles.loadingWrap}>
+          <AppSkeleton width="100%" height={100} style={{ marginBottom: 12 }} />
+          <AppSkeleton width="100%" height={100} style={{ marginBottom: 12 }} />
+          <AppSkeleton width="100%" height={100} />
+        </View>
+      ) : (
+        <SectionList
+          sections={sections}
+          keyExtractor={(item) => item.email}
+          renderItem={renderMember}
+          renderSectionHeader={({ section: { title, data } }) => (
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitleText}>{title}</Text>
+              <Text style={styles.sectionCountText}>({data.length})</Text>
+            </View>
+          )}
+          ListHeaderComponent={renderJoinRequests}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          stickySectionHeadersEnabled={false}
+          ListEmptyComponent={
+            <AppEmptyState
+              title="No Team Members Found"
+              description={searchQuery ? "No members match your search criteria." : "No team members are listed under this filter group."}
+              actionLabel={searchQuery ? undefined : "Add New Member"}
+              onAction={searchQuery ? undefined : openAddModal}
+            />
+          }
+        />
+      )}
+
+      <AppFAB
+        label="Add Member"
         onPress={openAddModal}
       />
 
-      {/* Edit/Add Modal */}
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView style={[styles.modalContainer, { backgroundColor: theme.colors.background }]}>
-          <View style={styles.modalHeader}>
-            <Text variant="titleLarge">{isEditing ? 'Edit Member' : 'Add New Member'}</Text>
-            <IconButton icon="close" onPress={() => setModalVisible(false)} />
-          </View>
-          
-          <ScrollView contentContainerStyle={styles.modalScroll}>
-            <TextInput
-              label="Email"
-              value={formData.email}
-              onChangeText={(text) => setFormData({ ...formData, email: text })}
-              style={styles.input}
-              disabled={isEditing}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-
-            <Divider style={styles.divider} />
-            <Text variant="titleMedium" style={styles.sectionTitle}>Tags</Text>
-            <View style={styles.tagsContainer}>
-              {tags.map(tag => (
-                <TouchableOpacity key={tag.id} style={styles.tagCheckboxRow} onPress={() => toggleTag(tag.id)}>
-                  <Checkbox
-                    status={selectedTags.includes(tag.id) ? 'checked' : 'unchecked'}
-                    onPress={() => toggleTag(tag.id)}
-                  />
-                  <Text>{tag.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {customFields.length > 0 && !isEditing && (
-              <>
-                {customFields.map(field => (
-                  <TextInput
-                    key={field.id}
-                    label={field.name}
-                    value={formData.customFields?.[field.id] || ''}
-                    onChangeText={(text) => setFormData({
-                      ...formData,
-                      customFields: { ...formData.customFields, [field.id]: text }
-                    })}
-                    style={styles.input}
-                  />
-                ))}
-              </>
-            )}
-
-            <Button
-              mode="contained"
-              onPress={handleSaveUser}
-              loading={saving}
-              disabled={saving}
-              style={styles.saveButton}
-            >
+      {/* Add / Edit Member Modal */}
+      <AppModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        title={isEditing ? 'Modify Member Permissions' : 'Register New Team Member'}
+        footer={
+          <View style={styles.modalFooter}>
+            <AppButton variant="ghost" onPress={() => setModalVisible(false)} style={{ flex: 1, marginRight: 8 }} disabled={saving}>
+              Cancel
+            </AppButton>
+            <AppButton variant="primary" onPress={handleSaveUser} style={{ flex: 1 }} loading={saving}>
               Save Member
-            </Button>
-            <View style={{height: 40}} />
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-    </SafeAreaView>
+            </AppButton>
+          </View>
+        }
+      >
+        <AppInput
+          label="Account Email Address"
+          value={formData.email}
+          onChangeText={(text) => setFormData({ ...formData, email: text })}
+          placeholder="member@teamrotorfpv.com"
+          disabled={isEditing}
+          autoCapitalize="none"
+          keyboardType="email-address"
+        />
+
+        <AppSection title="Role & Division Tags (RBAC Permissions)" style={{ marginTop: appSpacing.xl }}>
+          <Text style={styles.tagSectionDesc}>
+            Assigning a division tag automatically grants associated sub-division permissions across the application repository.
+          </Text>
+          <View style={styles.tagsGrid}>
+            {tags.map(tag => {
+              const isSelected = selectedTags.includes(tag.id);
+              return (
+                <Pressable 
+                  key={tag.id} 
+                  style={[styles.tagSelectCard, isSelected && styles.tagSelectCardActive]}
+                  onPress={() => toggleTag(tag.id)}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {isSelected ? <CheckSquare size={16} color="#8B5CF6" style={{ marginRight: 8 }} /> : <Square size={16} color={appColors.textMuted} style={{ marginRight: 8 }} />}
+                    <Text style={[styles.tagSelectName, isSelected && { color: '#FFFFFF' }]}>{tag.name}</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </AppSection>
+
+        {customFields.length > 0 && !isEditing ? (
+          <AppSection title="Custom Application Fields" style={{ marginTop: appSpacing.xl }}>
+            {customFields.map(field => (
+              <View key={field.id} style={{ marginBottom: 14 }}>
+                <AppInput
+                  label={field.name}
+                  value={formData.customFields?.[field.id] || ''}
+                  onChangeText={(text) => setFormData({
+                    ...formData,
+                    customFields: { ...formData.customFields, [field.id]: text }
+                  })}
+                  placeholder={`Enter ${field.name.toLowerCase()}...`}
+                />
+              </View>
+            ))}
+          </AppSection>
+        ) : null}
+      </AppModal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0b1017', // Match theme background
+    backgroundColor: appColors.background,
   },
-  searchbar: {
-    margin: 16,
-    marginBottom: 8,
-    backgroundColor: '#161f2b'
+  headerArea: {
+    paddingHorizontal: appSpacing.xl,
+    paddingTop: 12,
+    paddingBottom: 8,
+    backgroundColor: appColors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: appColors.border,
+  },
+  filterRow: {
+    marginTop: 12,
+  },
+  filterScroll: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  loadingWrap: {
+    padding: appSpacing.xl,
   },
   listContent: {
-    paddingBottom: 80,
+    padding: appSpacing.xl,
+    paddingBottom: 100,
   },
-  sectionHeaderSurface: {
-    backgroundColor: '#0b1017',
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 8,
+    marginTop: 8,
+    marginBottom: 4,
   },
-  sectionHeader: {
-    color: '#2F81F7', // primary
-    fontWeight: 'bold',
+  sectionTitleText: {
+    ...appTypography.bodyBold,
+    color: appColors.accent,
+    fontSize: 15,
+  },
+  sectionCountText: {
+    ...appTypography.body,
+    color: appColors.textMuted,
+    marginLeft: 6,
   },
   requestsContainer: {
-    padding: 16,
-    marginBottom: 8,
-  },
-  requestCard: {
-    marginBottom: 12,
+    marginBottom: 20,
+    backgroundColor: `${appColors.elevatedSurface}60`,
+    padding: appSpacing.lg,
+    borderRadius: appRadius.lg,
     borderWidth: 1,
-    backgroundColor: '#161f2b'
+    borderColor: '#F59E0B40',
   },
-  memberCard: {
-    marginHorizontal: 16,
-    marginBottom: 12,
-    backgroundColor: '#161f2b'
+  reqHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
   },
-  avatar: {
+  iconBox: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: appRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
-  tagsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 8,
+  reqTitle: {
+    ...appTypography.bodyBold,
+    color: '#F59E0B',
   },
-  tagChip: {
-    marginRight: 6,
-    marginBottom: 6,
-    height: 24,
-    backgroundColor: '#111827' // surface
+  reqSub: {
+    ...appTypography.caption,
+    color: appColors.textSecondary,
+    marginTop: 2,
   },
-  tagText: {
-    fontSize: 10,
-    marginVertical: 0,
+  reqCard: {
+    padding: appSpacing.md,
+    marginBottom: 12,
+    borderColor: '#F59E0B30',
+    borderWidth: 1,
   },
-  fab: {
-    position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#2F81F7',
-  },
-  modalContainer: {
-    flex: 1,
-  },
-  modalHeader: {
+  reqCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    alignItems: 'flex-start',
+    marginBottom: 10,
   },
-  modalScroll: {
-    padding: 16,
+  reqName: {
+    ...appTypography.bodyBold,
+    color: appColors.textPrimary,
   },
-  input: {
+  reqEmail: {
+    ...appTypography.caption,
+    color: appColors.textSecondary,
+  },
+  reqFieldsBox: {
+    backgroundColor: `${appColors.background}80`,
+    padding: 10,
+    borderRadius: appRadius.sm,
     marginBottom: 12,
-    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: appColors.border,
   },
-  divider: {
-    marginVertical: 16,
-  },
-  sectionTitle: {
-    marginBottom: 12,
-    fontWeight: 'bold',
-  },
-  tagsContainer: {
-    marginBottom: 16,
-  },
-  tagCheckboxRow: {
+  reqFieldItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 4,
+    marginBottom: 2,
   },
-  saveButton: {
-    marginTop: 24,
+  reqFieldLabel: {
+    ...appTypography.captionBold,
+    color: appColors.textSecondary,
+    marginRight: 6,
   },
-  imageContainer: {
+  reqFieldValue: {
+    ...appTypography.caption,
+    color: appColors.textPrimary,
+  },
+  reqActions: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
   },
-  profileImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    marginBottom: 8,
+  memberCard: {
+    padding: appSpacing.md,
+    marginBottom: 10,
   },
-  profileImagePlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+  memberHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  memberAvatarBox: {
+    width: 44,
+    height: 44,
+    borderRadius: appRadius.full,
+    backgroundColor: appColors.elevatedSurface,
+    alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: appColors.border,
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  memberName: {
+    ...appTypography.bodyBold,
+    color: appColors.textPrimary,
+  },
+  memberEmail: {
+    ...appTypography.caption,
+    color: appColors.textSecondary,
+    marginTop: 2,
+  },
+  memberActions: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-    backgroundColor: '#111827'
-  }
+    gap: 8,
+  },
+  iconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: appRadius.sm,
+    backgroundColor: appColors.elevatedSurface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: appColors.border,
+  },
+  iconBtnDanger: {
+    width: 32,
+    height: 32,
+    borderRadius: appRadius.sm,
+    backgroundColor: '#EF444415',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#EF444430',
+  },
+  memberTagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: `${appColors.border}50`,
+  },
+  tagBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: `${appColors.accent}10`,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: appRadius.sm,
+    borderWidth: 1,
+    borderColor: `${appColors.accent}25`,
+  },
+  tagBadgeText: {
+    ...appTypography.captionBold,
+    color: appColors.accent,
+    fontSize: 11,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tagSectionDesc: {
+    ...appTypography.caption,
+    color: appColors.textSecondary,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  tagsGrid: {
+    gap: 8,
+  },
+  tagSelectCard: {
+    backgroundColor: appColors.surface,
+    borderWidth: 1,
+    borderColor: appColors.border,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: appRadius.md,
+  },
+  tagSelectCardActive: {
+    backgroundColor: `${appColors.accent}15`,
+    borderColor: appColors.accent,
+  },
+  tagSelectName: {
+    ...appTypography.body,
+    color: appColors.textPrimary,
+  },
 });
+

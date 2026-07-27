@@ -1,4 +1,4 @@
-import { collection, query, onSnapshot, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, addDoc, updateDoc, deleteDoc, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { deleteCloudinaryImage, logAdminAction } from './adminApi';
 
@@ -41,7 +41,9 @@ export const SponsorsService = {
       updatedAt: serverTimestamp(),
       updatedBy: userEmail
     };
-    await updateDoc(doc(db, 'settings', 'sponsors'), dataToSave);
+    // setDoc+merge, not updateDoc: 'settings/sponsors' is a singleton that does
+    // not exist until it is first written, and updateDoc throws on a missing doc.
+    await setDoc(doc(db, 'settings', 'sponsors'), dataToSave, { merge: true });
     await logAdminAction('UPDATE', 'SponsorsSettings', 'Updated Sponsor Us Page Settings');
   },
 

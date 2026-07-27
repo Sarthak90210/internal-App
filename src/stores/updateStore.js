@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import * as Updates from 'expo-updates';
 
-export const useUpdateStore = create((set, get) => ({
+export const useUpdateStore = create((set) => ({
   isUpdateAvailable: false,
   isChecking: false,
   isDownloading: false,

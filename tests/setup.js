@@ -140,9 +140,27 @@ const mockModules = {
     SymbolView: mockComponent('SymbolView')
   },
   'react-native-reanimated': {
-    default: { createAnimatedComponent: (c) => c },
+    __esModule: true,
+    default: {
+      createAnimatedComponent: (c) => c,
+      View: mockComponent('Animated.View'),
+      Text: mockComponent('Animated.Text'),
+      ScrollView: mockComponent('Animated.ScrollView'),
+      Image: mockComponent('Animated.Image'),
+    },
+    createAnimatedComponent: (c) => c,
     useSharedValue: (v) => ({ value: v }),
     useAnimatedStyle: (fn) => fn(),
+    withSpring: (v) => v,
+    withTiming: (v) => v,
+    withSequence: (v) => v,
+    withRepeat: (v) => v,
+    withDelay: (v) => v,
+    Easing: { linear: (v) => v, ease: (v) => v, out: (v) => v, in: (v) => v, inOut: (v) => v, bezier: () => ((v) => v) },
+    FadeIn: { duration: () => ({ delay: () => {} }) },
+    FadeOut: { duration: () => ({ delay: () => {} }) },
+    SlideInRight: { duration: () => {} },
+    SlideOutRight: { duration: () => {} },
   },
   'react-native-gesture-handler': {
     GestureHandlerRootView: mockComponent('GestureHandlerRootView'),
@@ -157,8 +175,11 @@ const mockModules = {
     View: mockComponent('View'),
     Text: mockComponent('Text'),
     TouchableOpacity: mockComponent('TouchableOpacity'),
+    Pressable: mockComponent('Pressable'),
+    Modal: mockComponent('Modal'),
     ScrollView: mockComponent('ScrollView'),
     FlatList: mockComponent('FlatList'),
+    SectionList: mockComponent('SectionList'),
     ActivityIndicator: mockComponent('ActivityIndicator'),
     SegmentedButtons: mockComponent('SegmentedButtons'),
     Checkbox: mockComponent('Checkbox'),
@@ -169,6 +190,27 @@ const mockModules = {
     Button: mockComponent('Button'),
     IconButton: mockComponent('IconButton'),
     Menu: mockComponent('Menu'),
+    Touchable: { Mixin: {} },
+    Platform: { OS: 'ios', select: (obj) => obj.ios || obj.default },
+    Dimensions: { get: () => ({ width: 375, height: 812, scale: 2, fontScale: 1 }) },
+    useWindowDimensions: () => ({ width: 375, height: 812, scale: 2, fontScale: 1 }),
+    PixelRatio: { get: () => 2, getFontScale: () => 1, roundToNearestPixel: (n) => n },
+    StatusBar: { ...mockComponent('StatusBar'), currentHeight: 24, setBarStyle: () => {}, setBackgroundColor: () => {} },
+    Keyboard: { addListener: () => ({ remove: () => {} }), dismiss: () => {} },
+    Linking: { openURL: async () => {}, canOpenURL: async () => true, addEventListener: () => ({ remove: () => {} }) },
+    Easing: { linear: () => {}, ease: () => {}, bezier: () => {}, inOut: (fn) => fn },
+    Image: { ...mockComponent('Image'), resolveAssetSource: () => ({ uri: '' }), getSize: (uri, success) => success(100, 100) },
+    ImageBackground: mockComponent('ImageBackground'),
+    RefreshControl: mockComponent('RefreshControl'),
+    Switch: mockComponent('Switch'),
+    Animated: {
+      View: mockComponent('Animated.View'),
+      Text: mockComponent('Animated.Text'),
+      createAnimatedComponent: (c) => c,
+      timing: () => ({ start: (cb) => cb && cb() }),
+      spring: () => ({ start: (cb) => cb && cb() }),
+      Value: class { constructor(v) { this.value = v; } setValue(v) { this.value = v; } interpolate() { return 0; } }
+    },
     Alert: {
       alert: (title, message) => {
         global.lastAlert = { title, message };
@@ -177,6 +219,17 @@ const mockModules = {
     StyleSheet: {
       create: (styles) => styles
     }
+  },
+  'react-native-svg': {
+    default: mockComponent('Svg'),
+    Svg: mockComponent('Svg'),
+    Path: mockComponent('Path'),
+    Circle: mockComponent('Circle'),
+    Rect: mockComponent('Rect'),
+    G: mockComponent('G'),
+    Line: mockComponent('Line'),
+    Polygon: mockComponent('Polygon'),
+    Polyline: mockComponent('Polyline'),
   },
   'react-native-paper': {
     useTheme: () => ({
@@ -190,6 +243,21 @@ const mockModules = {
         onSurfaceDisabled: '#666666'
       }
     }),
+    MD3DarkTheme: {
+      colors: {
+        primary: '#1e88e5',
+        background: '#121212',
+        surface: '#1e1e1e',
+        onSurface: '#ffffff',
+        surfaceVariant: '#2c2c2c',
+        error: '#cf6679',
+        onSurfaceDisabled: '#666666',
+        elevation: { level1: '#1e1e1e', level2: '#242424', level3: '#2a2a2a' }
+      }
+    },
+    MD3LightTheme: { colors: {} },
+    configureFonts: () => ({}),
+    Provider: mockComponent('Provider'),
     Searchbar: mockComponent('Searchbar'),
     FAB: mockComponent('FAB'),
     List: {
@@ -208,14 +276,60 @@ const mockModules = {
     Button: mockComponent('Button'),
     IconButton: mockComponent('IconButton'),
     Menu: mockComponent('Menu'),
+    Snackbar: mockComponent('Snackbar'),
+    Card: {
+      ...mockComponent('Card'),
+      Title: mockComponent('Card.Title'),
+      Content: mockComponent('Card.Content'),
+      Actions: mockComponent('Card.Actions'),
+      Cover: mockComponent('Card.Cover'),
+    },
+    Surface: mockComponent('Surface'),
+    Divider: mockComponent('Divider'),
+    Chip: mockComponent('Chip'),
+    RadioButton: {
+      Group: mockComponent('RadioButton.Group'),
+      Item: mockComponent('RadioButton.Item'),
+    },
+    Switch: mockComponent('Switch'),
+    ProgressBar: mockComponent('ProgressBar'),
+    Avatar: {
+      Image: mockComponent('Avatar.Image'),
+      Text: mockComponent('Avatar.Text'),
+      Icon: mockComponent('Avatar.Icon'),
+    },
+    Tooltip: mockComponent('Tooltip'),
   },
   '@expo/vector-icons/MaterialCommunityIcons': mockComponent('MaterialCommunityIcons'),
+  '@expo/vector-icons/Feather': mockComponent('Feather'),
+  '@expo/vector-icons/Ionicons': mockComponent('Ionicons'),
   'expo-updates': {
     isEnabled: false,
     checkForUpdateAsync: async () => ({ isAvailable: false }),
     fetchUpdateAsync: async () => ({ isNew: false }),
     reloadAsync: async () => {},
   },
+  // Without this, requiring ProfileScreen pulls in the real expo-constants,
+  // which reaches into expo-modules-core's .ts sources and crashes the runner.
+  'expo-constants': {
+    default: {
+      expoConfig: { version: "2.2.0", extra: {} },
+      easConfig: null,
+    },
+  },
+  // Every screen imports icons from here. The real package is a barrel over
+  // ~1600 icon modules; loading it made the screens suite take tens of seconds
+  // and time out on slower machines. This Proxy hands back a mock component for
+  // whatever icon name is requested, so new icons never need registering.
+  'lucide-react-native': new Proxy({}, {
+    get: (target, prop) => {
+      if (prop === '__esModule') return true;
+      if (typeof prop !== 'string') return undefined;
+      if (!target[prop]) target[prop] = mockComponent(prop);
+      return target[prop];
+    },
+    has: () => true,
+  }),
   '@react-navigation/native': {
     NavigationContainer: mockComponent('NavigationContainer'),
     DarkTheme: {
@@ -360,13 +474,30 @@ Module._load = function(request, parent, isMain) {
   return originalLoad.apply(this, arguments);
 };
 
-// Register require hook for local JS and TS/TSX files in src/
-const compileFile = function(module, filename) {
-  if (filename.includes('node_modules')) {
-    return module._compile(fs.readFileSync(filename, 'utf8'), filename);
+// On-disk transform cache. Every require of a src/ file used to re-run Babel,
+// which made a cold full-suite run take tens of seconds and occasionally blow
+// past CI timeouts. Cache entries are keyed by content hash, so edits
+// invalidate themselves and a stale cache can never mask a change.
+const crypto = require('crypto');
+const CACHE_DIR = path.join(__dirname, '..', 'node_modules', '.cache', 'rfv-tests');
+try { fs.mkdirSync(CACHE_DIR, { recursive: true }); } catch { /* cache is optional */ }
+
+const transformCached = (content, filename) => {
+  const key = crypto
+    .createHash('sha1')
+    .update(filename)
+    .update('\0')
+    .update(content)
+    .digest('hex');
+  const cachePath = path.join(CACHE_DIR, key + '.js');
+
+  try {
+    return fs.readFileSync(cachePath, 'utf8');
+  } catch {
+    // Cache miss — fall through and compile.
   }
-  const content = fs.readFileSync(filename, 'utf8');
-  const transformed = babel.transformSync(content, {
+
+  const { code } = babel.transformSync(content, {
     filename,
     presets: [
       require.resolve('@babel/preset-typescript')
@@ -377,7 +508,18 @@ const compileFile = function(module, filename) {
       [require.resolve('@babel/plugin-transform-react-jsx'), { runtime: 'classic' }]
     ]
   });
-  module._compile(transformed.code, filename);
+
+  try { fs.writeFileSync(cachePath, code); } catch { /* cache is optional */ }
+  return code;
+};
+
+// Register require hook for local JS and TS/TSX files in src/
+const compileFile = function(module, filename) {
+  if (filename.includes('node_modules')) {
+    return module._compile(fs.readFileSync(filename, 'utf8'), filename);
+  }
+  const content = fs.readFileSync(filename, 'utf8');
+  module._compile(transformCached(content, filename), filename);
 };
 
 require.extensions['.js'] = compileFile;

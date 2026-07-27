@@ -1,6 +1,6 @@
 import { collection, query, onSnapshot, orderBy, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import { uploadFile, deleteCloudinaryImage, moveCloudinaryImage, logAdminAction } from './adminApi';
+import { deleteCloudinaryImage, moveCloudinaryImage, logAdminAction } from './adminApi';
 
 export const EventsService = {
   subscribeToEvents: (callback) => {

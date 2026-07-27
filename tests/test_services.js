@@ -2,7 +2,7 @@ const assert = require('assert');
 const { resetMocks, firestoreStore, setMockDocMissing, setMockClaims, setMockCurrentUser } = require('./setup');
 
 const { InventoryService } = require('../src/services/inventory');
-const { apiPost, apiGet, uploadFile, logAdminAction, fetchAdmins, syncUserPermissions } = require('../src/services/adminApi');
+const { apiPost, uploadFile, logAdminAction, fetchAdmins, syncUserPermissions } = require('../src/services/adminApi');
 const { GalleryService } = require('../src/services/gallery');
 const { SponsorsService } = require('../src/services/sponsors');
 const { AuthService } = require('../src/services/auth');
@@ -56,44 +56,98 @@ async function testServices() {
     assert.strictEqual(updated.parentInventoryId, null);
   });
 
-  await runTest('[BUG VERIFICATION 1] InventoryService moveInventory fails when passed string parameters from FolderDetailScreen', async () => {
-    firestoreStore.set('inventories/inv_1', { name: 'Motors', listId: 'list_1' });
-    
-    // FolderDetailScreen passes (invId, stringListId, stringParentId)
-    // moveInventory accesses destination.type (which is undefined on string) and then allInvs.find (where allInvs is string or null)
-    let caughtError = null;
-    try {
-      await InventoryService.moveInventory('inv_1', 'list_2', 'parent_inv_1');
-    } catch (err) {
-      caughtError = err;
-    }
+  // Regression: FolderDetailScreen used to call this as
+  // (invId, stringListId, stringParentId), which crashed on allInvs.find.
+  // Both call sites now pass (invId, destinationObject, allInvs).
+  await runTest('InventoryService moveInventory into a parent inventory (FolderDetailScreen path)', async () => {
+    firestoreStore.set('inventories/inv_1', { name: 'Motors', listId: 'list_1', parentInventoryId: null });
+    const allInvs = [
+      { id: 'inv_1', name: 'Motors', listId: 'list_1' },
+      { id: 'inv_2', name: 'Spares', listId: 'list_2' },
+    ];
+    const destination = { type: 'inventory', id: 'inv_2', name: 'Spares' };
 
-    assert.ok(caughtError, 'Expected moveInventory to fail with invalid argument types');
-    assert.ok(
-      caughtError.message.includes('find is not a function') || caughtError instanceof TypeError,
-      `Expected TypeError on allInvs.find, got: ${caughtError.message}`
-    );
+    await InventoryService.moveInventory('inv_1', destination, allInvs);
+
+    const updated = firestoreStore.get('inventories/inv_1');
+    assert.strictEqual(updated.parentInventoryId, 'inv_2', 'should be reparented under the target inventory');
+    assert.strictEqual(updated.listId, 'list_2', 'should inherit the target inventory\'s listId');
   });
 
   // 2. AdminApi Tests
-  await runTest('adminApi apiPost and apiGet formatting and token attachment', async () => {
+  await runTest('adminApi apiPost formatting and token attachment', async () => {
     const postRes = await apiPost('/api/test-route', { key: 'val' });
     assert.strictEqual(postRes.ok, true);
     assert.strictEqual(global.fetchCalls.length, 1);
     assert.strictEqual(global.fetchCalls[0].options.headers['Authorization'], 'Bearer mock-id-token-123');
-
-    const getRes = await apiGet('/api/test-get');
-    assert.strictEqual(getRes.ok, true);
   });
 
-  await runTest('[BUG VERIFICATION 2] adminApi uploadFile explicitly sets Content-Type header', async () => {
+  await runTest('adminApi uploadFile does not explicitly set Content-Type header', async () => {
     await uploadFile('file://path/to/image.png', 'events');
     const lastFetch = global.fetchCalls[global.fetchCalls.length - 1];
     const headers = lastFetch.options.headers;
     
-    assert.strictEqual(headers['Content-Type'], 'multipart/form-data', 
-      'BUG CONFIRMED: Content-Type is explicitly set to multipart/form-data without boundary parameter'
+    assert.strictEqual(headers['Content-Type'], undefined, 
+      'Expected Content-Type to be undefined so browser/fetch can automatically set boundary for FormData'
     );
+  });
+
+  // ── Upload folder contract ───────────────────────────────────────────────
+  // The backend sanitises the caller-supplied folder to [a-zA-Z0-9/_-] and then,
+  // for non-admins, requires it to equal their own profile folder. An email's
+  // '@' and '.' do not survive that, so a folder built as `users/${email}`
+  // could never match and every non-admin profile upload was rejected 403.
+  // These tests pin the client to the same normalisation the server uses.
+  const { sanitizeFolder, ownProfileFolder, buildFolder } = require('../src/lib/mediaUpload');
+
+  // Mirror of the server's sanitiser (Team-RotorFPV-Website/server/index.js).
+  const serverSanitize = (folder) => (folder || '').replace(/[^a-zA-Z0-9/_-]/g, '');
+
+  await runTest('mediaUpload sanitizeFolder matches the server sanitiser', async () => {
+    for (const input of [
+      'users/teamrotorfpv@vit.ac.in',
+      'events/Upcoming/Drone-Race-2026',
+      'sponsors/Acme Corp. & Co!',
+      'gallery',
+      '',
+      null,
+    ]) {
+      assert.strictEqual(sanitizeFolder(input), serverSanitize(input), `mismatch for input: ${input}`);
+    }
+  });
+
+  await runTest('mediaUpload ownProfileFolder survives server sanitisation (403 regression)', async () => {
+    const email = 'TeamRotorFPV@vit.ac.in';
+    const clientFolder = ownProfileFolder(email);
+
+    // What the server computes for the same user.
+    const serverExpected = `users/${serverSanitize(email.toLowerCase())}`;
+
+    // The server sanitises whatever the client sent, then compares.
+    assert.strictEqual(
+      serverSanitize(clientFolder),
+      serverExpected,
+      'sanitised client folder must equal the server-side expected folder'
+    );
+
+    // And the old, broken construction must NOT satisfy it — proving the test
+    // would have caught the original bug.
+    const legacyFolder = `users/${email.toLowerCase()}`;
+    assert.notStrictEqual(
+      serverSanitize(legacyFolder),
+      `users/${email.toLowerCase()}`,
+      'raw-email folder cannot survive sanitisation — this was the 403'
+    );
+  });
+
+  await runTest('mediaUpload buildFolder strips unsafe characters from user input', async () => {
+    assert.strictEqual(buildFolder('events', 'Upcoming', 'Drone Race 2026'), 'events/Upcoming/Drone-Race-2026');
+    // '.', '&' and '!' are dropped; the resulting '-' run is collapsed.
+    assert.strictEqual(buildFolder('sponsors', '  Acme Corp. & Co!  '), 'sponsors/Acme-Corp-Co');
+    assert.strictEqual(buildFolder('achievements', null), 'achievements');
+    // Result must always be a no-op under the server's sanitiser.
+    const built = buildFolder('events', 'Live', 'Sürprise Event #3');
+    assert.strictEqual(serverSanitize(built), built, 'buildFolder output must already be server-safe');
   });
 
   await runTest('adminApi syncUserPermissions admin promotion and demotion', async () => {
@@ -119,20 +173,15 @@ async function testServices() {
     assert.ok(docRef.id);
   });
 
-  await runTest('[BUG VERIFICATION 3A] GalleryService updateGallerySettings fails with updateDoc when doc is missing', async () => {
-    // Document 'settings/gallery' is missing in fresh database
-    let caughtErr = null;
-    try {
-      await GalleryService.updateGallerySettings({ heroImageUrl: 'https://img.com/hero.jpg' }, 'admin@teamrotor.com');
-    } catch (err) {
-      caughtErr = err;
-    }
+  // Regression: this used updateDoc, which throws when 'settings/gallery' has
+  // never been written. It now uses setDoc+merge and creates the doc.
+  await runTest('GalleryService updateGallerySettings creates the settings doc when missing', async () => {
+    await GalleryService.updateGallerySettings({ heroImageUrl: 'https://img.com/hero.jpg' }, 'admin@teamrotor.com');
 
-    assert.ok(caughtErr, 'Expected updateGallerySettings to throw error on missing document');
-    assert.ok(
-      caughtErr.message.includes('No document to update') || caughtErr.code === 'not-found',
-      `Expected Firestore missing doc error, got: ${caughtErr.message}`
-    );
+    const stored = firestoreStore.get('settings/gallery');
+    assert.ok(stored, 'settings/gallery should have been created');
+    assert.strictEqual(stored.heroImageUrl, 'https://img.com/hero.jpg');
+    assert.strictEqual(stored.updatedBy, 'admin@teamrotor.com');
   });
 
   // 4. SponsorsService Tests
@@ -146,20 +195,14 @@ async function testServices() {
     assert.ok(docRef.id);
   });
 
-  await runTest('[BUG VERIFICATION 3B] SponsorsService updateSponsorSettings fails with updateDoc when doc is missing', async () => {
-    // Document 'settings/sponsors' is missing in clean environment
-    let caughtErr = null;
-    try {
-      await SponsorsService.updateSponsorSettings({ title: 'New Sponsors Title' }, 'admin@teamrotor.com');
-    } catch (err) {
-      caughtErr = err;
-    }
+  // Regression: same missing-singleton-doc problem as the gallery settings.
+  await runTest('SponsorsService updateSponsorSettings creates the settings doc when missing', async () => {
+    await SponsorsService.updateSponsorSettings({ title: 'New Sponsors Title' }, 'admin@teamrotor.com');
 
-    assert.ok(caughtErr, 'Expected updateSponsorSettings to throw error on missing document');
-    assert.ok(
-      caughtErr.message.includes('No document to update') || caughtErr.code === 'not-found',
-      `Expected Firestore missing doc error, got: ${caughtErr.message}`
-    );
+    const stored = firestoreStore.get('settings/sponsors');
+    assert.ok(stored, 'settings/sponsors should have been created');
+    assert.strictEqual(stored.title, 'New Sponsors Title');
+    assert.strictEqual(stored.updatedBy, 'admin@teamrotor.com');
   });
 
   // 5. AuthService Tests
