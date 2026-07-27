@@ -38,12 +38,16 @@ echo "ANDROID_HOME: $ANDROID_HOME"
 
 echo "=== Stopping any old Gradle Daemons ==="
 cd "$(dirname "$0")/../android"
-chmod +x gradlew
-./gradlew --stop || true
+# The project sits on the Windows drive (/mnt/c), which WSL usually mounts
+# without exec permission — so `chmod +x gradlew` doesn't stick and `./gradlew`
+# fails with "Permission denied". Invoking it via `bash` needs only read
+# permission (which the mount has), sidestepping the exec bit entirely.
+chmod +x gradlew 2>/dev/null || true
+bash ./gradlew --stop || true
 
 echo "=== Building Android APK in Release Mode (--no-daemon) ==="
 # Run gradle assembleRelease without daemon to ensure fresh PATH and Linux SDK environment
-./gradlew --no-daemon assembleRelease --stacktrace
+bash ./gradlew --no-daemon assembleRelease --stacktrace
 
 echo "=== Checking build output ==="
 APK_SOURCE="app/build/outputs/apk/release/app-release.apk"

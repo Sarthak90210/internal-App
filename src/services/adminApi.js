@@ -1,7 +1,10 @@
 import { auth, db } from '../firebase';
 import { collection, addDoc } from 'firebase/firestore';
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+// Fall back to the deployed backend rather than localhost: EAS-built bundles
+// don't receive the local .env, so a missing EXPO_PUBLIC_API_URL used to point
+// the app at the phone itself and silently break every upload.
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://team-rotorfpv-website.onrender.com';
 
 const getIdToken = async () => {
   if (!auth.currentUser) {

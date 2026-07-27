@@ -40,8 +40,9 @@ export default function InventoryListsScreen({ navigation }) {
   const [newListName, setNewListName] = useState('');
   const [activeTab, setActiveTab] = useState('active');
 
-  const { hasPermission } = useAuthStore();
+  const { hasPermission, user } = useAuthStore();
   const hasInventoryPermission = hasPermission('inventory');
+  const myEmail = (user?.email || '').toLowerCase();
 
   useEffect(() => {
     if (!hasInventoryPermission) {
@@ -124,9 +125,44 @@ export default function InventoryListsScreen({ navigation }) {
     );
   };
 
-  const filteredLists = lists.filter(l => 
+  const filteredLists = lists.filter(l =>
     (activeTab === 'active' ? !l.isArchived : l.isArchived)
   );
+
+  // Folders currently checked out to the signed-in user. currentHolder is stored
+  // as the holder's (lowercased) email — the same match the global search uses.
+  // Guard against orphaned folders whose parent list no longer exists.
+  const listIdSet = new Set(lists.map(l => l.id));
+  const myHeldInvs = myEmail
+    ? allInvs.filter(inv =>
+        listIdSet.has(inv.listId) &&
+        inv.currentHolder?.toLowerCase() === myEmail
+      )
+    : [];
+
+  const renderHeldByYou = () => {
+    if (myHeldInvs.length === 0) return null;
+    return (
+      <View style={styles.heldSection}>
+        <Text style={styles.heldTitle}>
+          Held by You · {myHeldInvs.length}
+        </Text>
+        {myHeldInvs.map(inv => (
+          <AppListItem
+            key={inv.id}
+            title={inv.name || 'Unnamed Folder'}
+            description={`Folder · In ${lists.find(l => l.id === inv.listId)?.name || 'Unknown List'}`}
+            leftIcon={
+              <View style={styles.heldIconBox}>
+                <Box size={18} color={appColors.accent} />
+              </View>
+            }
+            onPress={() => navigation.navigate('FolderDetail', { inventoryId: inv.id, inventoryName: inv.name })}
+          />
+        ))}
+      </View>
+    );
+  };
 
   const getArchivedDescription = (list) => {
     if (!list.isArchived) return undefined;
@@ -143,29 +179,32 @@ export default function InventoryListsScreen({ navigation }) {
   };
 
   const renderNormalView = () => (
-    <>
-      <View style={styles.filterRow}>
-        <AppChip 
-          selected={activeTab === 'active'} 
-          onPress={() => setActiveTab('active')}
-          style={{ marginRight: 8 }}
-        >
-          Active Lists
-        </AppChip>
-        <AppChip 
-          selected={activeTab === 'archived'} 
-          onPress={() => setActiveTab('archived')}
-        >
-          Archived
-        </AppChip>
-      </View>
-
       <FlatList
         keyboardShouldPersistTaps="handled"
         data={filteredLists}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}
         showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <>
+            {renderHeldByYou()}
+            <View style={styles.filterRow}>
+              <AppChip
+                selected={activeTab === 'active'}
+                onPress={() => setActiveTab('active')}
+                style={{ marginRight: 8 }}
+              >
+                Active Lists
+              </AppChip>
+              <AppChip
+                selected={activeTab === 'archived'}
+                onPress={() => setActiveTab('archived')}
+              >
+                Archived
+              </AppChip>
+            </View>
+          </>
+        }
         renderItem={({ item }) => {
           const invCount = allInvs.filter(i => i.listId === item.id).length;
           const desc = item.isArchived 
@@ -211,7 +250,6 @@ export default function InventoryListsScreen({ navigation }) {
           />
         }
       />
-    </>
   );
 
   const renderSearchResults = () => {
@@ -396,10 +434,28 @@ const styles = StyleSheet.create({
     marginHorizontal: appSpacing.xl,
     marginBottom: appSpacing.md,
   },
-  filterRow: { 
-    flexDirection: 'row', 
-    paddingHorizontal: appSpacing.xl, 
-    paddingBottom: 14, 
+  filterRow: {
+    flexDirection: 'row',
+    paddingHorizontal: appSpacing.xl,
+    paddingBottom: 14,
+  },
+  heldSection: {
+    paddingHorizontal: appSpacing.xl,
+    paddingBottom: 14,
+  },
+  heldTitle: {
+    ...appTypography.metadata,
+    textTransform: 'uppercase',
+    color: appColors.textMuted,
+    marginBottom: 10,
+  },
+  heldIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: appRadius.sm,
+    backgroundColor: `${appColors.accent}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   iconBox: {
     width: 38,
