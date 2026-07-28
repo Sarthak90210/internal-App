@@ -21,7 +21,6 @@
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false,
-      "usesCleartextTraffic": true,
       "softwareKeyboardLayoutMode": "pan"
     },
     "web": {

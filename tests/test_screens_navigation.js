@@ -132,7 +132,7 @@ async function testScreensNavigation() {
     assert.strictEqual(element.type.displayName, 'NativeStackNavigator');
     
     const screens = getChildrenArray(element);
-    assert.strictEqual(screens.length, 9, 'Expected 9 admin screens registered');
+    assert.strictEqual(screens.length, 10, 'Expected 10 admin screens registered');
 
     const screenNames = screens.map(s => s.props.name);
     assert.deepStrictEqual(screenNames, [
@@ -144,7 +144,8 @@ async function testScreensNavigation() {
       'ManageHomeSettings',
       'ManageSponsors',
       'ManageContactMessages',
-      'ManageTeamMembers'
+      'ManageTeamMembers',
+      'ManageSocials'
     ]);
   });
 

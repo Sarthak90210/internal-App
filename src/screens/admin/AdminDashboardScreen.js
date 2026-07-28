@@ -9,8 +9,9 @@ import {
   Users, 
   Calendar, 
   MessageSquare, 
-  UserCog, 
-  ChevronRight 
+  UserCog,
+  Share2,
+  ChevronRight
 } from '../../lib/lucideIcons';
 import { useAuthStore } from '../../stores/authStore';
 import { AppCard } from '../../components/design-system';
@@ -25,6 +26,7 @@ const adminModules = [
   { title: "Events", route: "ManageEvents", icon: Calendar, permission: "board", color: "#10B981", desc: "Schedule & RSVP" },
   { title: "Messages", route: "ManageContactMessages", icon: MessageSquare, permission: "board", color: "#6366F1", desc: "Inquiries & inbox" },
   { title: "Team Members", route: "ManageTeamMembers", icon: UserCog, permission: "superAdmin", color: "#8B5CF6", desc: "Roster & permissions" },
+  { title: "Socials", route: "ManageSocials", icon: Share2, permission: "board", color: "#F472B6", desc: "Footer & link tree" },
 ];
 
 export default function AdminDashboardScreen({ navigation }) {

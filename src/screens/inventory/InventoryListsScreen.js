@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { View, FlatList, StyleSheet, Alert, Pressable } from 'react-native';
+import { View, FlatList, StyleSheet, Alert, Pressable, Linking } from 'react-native';
 import { Text } from 'react-native-paper';
-import { 
-  Folder, 
-  Archive, 
-  ArchiveRestore, 
-  Box, 
-  User, 
-  Layers, 
-  ShieldAlert 
+import {
+  Folder,
+  Archive,
+  ArchiveRestore,
+  Box,
+  User,
+  Layers,
+  ShieldAlert,
+  Table
 } from '../../lib/lucideIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../../firebase';
 import { InventoryService } from '../../services/inventory';
 import { UsersService } from '../../services/users';
 import { useAuthStore } from '../../stores/authStore';
@@ -27,6 +30,12 @@ import {
 } from '../../components/design-system';
 import { appColors, appRadius, appSpacing, appTypography } from '../../theme';
 
+// Mirrors the inventory website's OpenSheetButton exactly: it reads the
+// `sheetUrl` and `enabled` fields off settings/google_sheets, only shows when
+// the integration is enabled, and falls back to the generic Sheets URL when no
+// specific link is set.
+const SHEETS_FALLBACK_URL = 'https://docs.google.com/spreadsheets';
+
 export default function InventoryListsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [lists, setLists] = useState([]);
@@ -40,9 +49,38 @@ export default function InventoryListsScreen({ navigation }) {
   const [newListName, setNewListName] = useState('');
   const [activeTab, setActiveTab] = useState('active');
 
+  const [sheetUrl, setSheetUrl] = useState('');
+  const [sheetEnabled, setSheetEnabled] = useState(false);
+
   const { hasPermission, user } = useAuthStore();
   const hasInventoryPermission = hasPermission('inventory');
   const myEmail = (user?.email || '').toLowerCase();
+
+  // Live-track the Google Sheets config, exactly like the website's
+  // OpenSheetButton — the button appears only while the integration is enabled.
+  useEffect(() => {
+    if (!hasInventoryPermission) return;
+    const unsub = onSnapshot(
+      doc(db, 'settings', 'google_sheets'),
+      (snap) => {
+        const data = snap.exists() ? snap.data() : {};
+        setSheetUrl(data.sheetUrl || '');
+        setSheetEnabled(data.enabled || false);
+      },
+      () => {
+        setSheetEnabled(false);
+      }
+    );
+    return () => unsub();
+  }, [hasInventoryPermission]);
+
+  const handleOpenSheet = async () => {
+    try {
+      await Linking.openURL(sheetUrl || SHEETS_FALLBACK_URL);
+    } catch (e) {
+      Alert.alert('Cannot Open', 'The linked Google Sheet could not be opened.');
+    }
+  };
 
   useEffect(() => {
     if (!hasInventoryPermission) {
@@ -338,8 +376,16 @@ export default function InventoryListsScreen({ navigation }) {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}> 
       <View style={styles.hero}>
-        <Text style={styles.heroTitle}>Inventory</Text>
-        <Text style={styles.heroSub}>Manage equipment lists and storage folders</Text>
+        <View style={{ flex: 1, marginRight: 12 }}>
+          <Text style={styles.heroTitle}>Inventory</Text>
+          <Text style={styles.heroSub}>Manage equipment lists and storage folders</Text>
+        </View>
+        {sheetEnabled && (
+          <Pressable onPress={handleOpenSheet} style={styles.sheetBtn} hitSlop={8}>
+            <Table size={16} color={appColors.accent} />
+            <Text style={styles.sheetBtnText}>Open Sheet</Text>
+          </Pressable>
+        )}
       </View>
 
       <AppSearchBar
@@ -415,12 +461,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 32,
   },
-  hero: { 
-    paddingHorizontal: appSpacing.xl, 
-    paddingTop: 12, 
+  hero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: appSpacing.xl,
+    paddingTop: 12,
     paddingBottom: 16,
   },
-  heroTitle: { 
+  sheetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: appRadius.pill,
+    borderWidth: 1,
+    borderColor: appColors.accent,
+    backgroundColor: `${appColors.accent}14`,
+  },
+  sheetBtnText: {
+    ...appTypography.caption,
+    fontWeight: '700',
+    color: appColors.accent,
+  },
+  heroTitle: {
     ...appTypography.pageTitle, 
     fontSize: 28, 
     color: appColors.textPrimary,
