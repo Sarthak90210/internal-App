@@ -118,7 +118,16 @@ const mockModules = {
     StorageAccessFramework: {
       requestDirectoryPermissionsAsync: async () => ({ granted: true, directoryUri: 'file:///mock-dir' }),
       createFileAsync: async () => 'file:///mock-file',
-    }
+    },
+    // New SDK 54 filesystem API.
+    Paths: { cache: 'file:///mock-cache', document: 'file:///mock-documents' },
+    File: class File {
+      constructor(dir, name) { this.uri = `${dir}/${name}`; this.exists = false; this._content = ''; }
+      create() { this.exists = true; }
+      write(content) { this._content = content; this.exists = true; }
+      delete() { this.exists = false; }
+    },
+    Directory: class Directory {},
   },
   'expo-sharing': {
     isAvailableAsync: async () => true,
@@ -127,6 +136,9 @@ const mockModules = {
   'expo-camera': {
     Camera: mockComponent('Camera'),
     CameraView: mockComponent('CameraView'),
+    useCameraPermissions: () => [{ granted: true, canAskAgain: true }, async () => ({ granted: true }), async () => ({ granted: true })],
+    getCameraPermissionsAsync: async () => ({ granted: true }),
+    requestCameraPermissionsAsync: async () => ({ granted: true }),
   },
   'expo-image-picker': {
     launchImageLibraryAsync: async () => ({ canceled: true }),

@@ -16,7 +16,9 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { InventoryService } from '../../services/inventory';
 import { UsersService } from '../../services/users';
+import InventoryScanButton from '../../components/InventoryScanButton';
 import { useAuthStore } from '../../stores/authStore';
+import { buildInventoryPath } from '../../lib/inventoryHelpers';
 import { 
   AppSearchBar, 
   AppChip, 
@@ -322,11 +324,16 @@ export default function InventoryListsScreen({ navigation }) {
             onPress = () => navigation.navigate('InventoryDetail', { listId: item.id, listName: item.name });
           } else if (item._type === 'folder') {
             icon = <Folder size={18} color="#38BDF8" />;
-            subtitle = `Folder • In ${lists.find(l => l.id === item.listId)?.name || 'Unknown List'}`;
+            // Full path of the folder's parent (everything above the folder itself).
+            const parentPath = buildInventoryPath(item.parentInventoryId, allInvs, lists);
+            const listName = lists.find(l => l.id === item.listId)?.name || 'Unknown List';
+            subtitle = `Folder • ${parentPath || listName}`;
             onPress = () => navigation.navigate('FolderDetail', { inventoryId: item.id, inventoryName: item.name });
           } else if (item._type === 'item') {
             icon = <Box size={18} color="#A855F7" />;
-            subtitle = `Item • Qty: ${item.quantity || 0}`;
+            // Full location path: List / Folder / Sub-folder that holds the item.
+            const path = buildInventoryPath(item.inventoryId, allInvs, lists);
+            subtitle = `Qty: ${item.quantity || 0}${path ? ` • ${path}` : ''}`;
             onPress = () => navigation.navigate('ItemDetail', { itemId: item.id, itemData: item });
           } else if (item._type === 'user') {
             icon = <User size={18} color="#10B981" />;
@@ -380,12 +387,15 @@ export default function InventoryListsScreen({ navigation }) {
           <Text style={styles.heroTitle}>Inventory</Text>
           <Text style={styles.heroSub}>Manage equipment lists and storage folders</Text>
         </View>
-        {sheetEnabled && (
-          <Pressable onPress={handleOpenSheet} style={styles.sheetBtn} hitSlop={8}>
-            <Table size={16} color={appColors.accent} />
-            <Text style={styles.sheetBtnText}>Open Sheet</Text>
-          </Pressable>
-        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <InventoryScanButton navigation={navigation} surface="home" label="Scan" />
+          {sheetEnabled && (
+            <Pressable onPress={handleOpenSheet} style={styles.sheetBtn} hitSlop={8}>
+              <Table size={16} color={appColors.accent} />
+              <Text style={styles.sheetBtnText}>Open Sheet</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
 
       <AppSearchBar

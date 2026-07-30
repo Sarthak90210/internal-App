@@ -11,7 +11,8 @@ import {
   MessageSquare, 
   UserCog,
   Share2,
-  ChevronRight
+  ChevronRight,
+  QrCode
 } from '../../lib/lucideIcons';
 import { useAuthStore } from '../../stores/authStore';
 import { AppCard } from '../../components/design-system';
@@ -27,6 +28,7 @@ const adminModules = [
   { title: "Messages", route: "ManageContactMessages", icon: MessageSquare, permission: "board", color: "#6366F1", desc: "Inquiries & inbox" },
   { title: "Team Members", route: "ManageTeamMembers", icon: UserCog, permission: "superAdmin", color: "#8B5CF6", desc: "Roster & permissions" },
   { title: "Socials", route: "ManageSocials", icon: Share2, permission: "board", color: "#F472B6", desc: "Footer & link tree" },
+  { title: "QR Tags", route: "ManageTags", icon: QrCode, permission: "inventory", color: "#14B8A6", desc: "Generate & print tags" },
 ];
 
 export default function AdminDashboardScreen({ navigation }) {

@@ -1,25 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import { View, ScrollView, StyleSheet, Alert } from 'react-native';
 import { Text } from 'react-native-paper';
-import { Box, Edit2, Trash2, Clock, User, Tag, Hash, Check } from '../../lib/lucideIcons';
+import { Box, Edit2, Trash2, Clock, User, Tag, Hash, Check, UserCheck, CornerDownRight } from '../../lib/lucideIcons';
 import { InventoryService } from '../../services/inventory';
-import { 
-  AppCard, 
-  AppSection, 
-  AppButton, 
-  AppInput, 
-  AppBadge, 
-  AppSkeleton 
+import { UsersService } from '../../services/users';
+import { useAuthStore } from '../../stores/authStore';
+import AttachTagModal from '../../components/AttachTagModal';
+import { resolveEffectiveHolder } from '../../lib/custody';
+import { getHolderName } from '../../lib/inventoryHelpers';
+import {
+  AppCard,
+  AppSection,
+  AppButton,
+  AppInput,
+  AppBadge,
+  AppSkeleton
 } from '../../components/design-system';
 import { appColors, appRadius, appSpacing, appTypography } from '../../theme';
 
 export default function ItemDetailScreen({ route, navigation }) {
   const { itemId, itemData: initialItemData } = route.params;
+  const { user, hasPermission } = useAuthStore();
+  const [replaceVisible, setReplaceVisible] = useState(false);
 
   const [item, setItem] = useState(initialItemData || null);
+  const [allInvs, setAllInvs] = useState([]);
+  const [usersList, setUsersList] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', quantity: '0', category: '' });
   const [saving, setSaving] = useState(false);
+  const [custodyBusy, setCustodyBusy] = useState(false);
 
   useEffect(() => {
     const inventoryId = initialItemData?.inventoryId;
@@ -34,9 +44,20 @@ export default function ItemDetailScreen({ route, navigation }) {
         setItem(foundItem);
       }
     });
-    
+
     return () => unsubscribe();
   }, [itemId, initialItemData, initialItemData?.inventoryId]);
+
+  // Needed to resolve the item's effective holder (it may inherit the holder of
+  // an ancestor folder) and to display holder names.
+  useEffect(() => {
+    const unsubInvs = InventoryService.subscribeToAllInventories((data) => setAllInvs(data));
+    const unsubUsers = UsersService.subscribeToUsers((data) => setUsersList(data));
+    return () => {
+      unsubInvs();
+      unsubUsers();
+    };
+  }, []);
 
   const handleEditToggle = () => {
     if (!isEditing && item) {
@@ -63,6 +84,53 @@ export default function ItemDetailScreen({ route, navigation }) {
       Alert.alert('Error', 'Failed to update item details');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Custody: an item can be held on its own (decision: whole-stack hold). An
+  // explicit holder overrides the inherited folder holder; releasing reverts it.
+  const holderInfo = resolveEffectiveHolder(item, 'item', allInvs);
+  const myEmail = user?.email;
+  const iHoldExplicitly = item?.currentHolder && item.currentHolder === myEmail;
+
+  const doHold = async () => {
+    try {
+      setCustodyBusy(true);
+      await InventoryService.holdItem(itemId, myEmail);
+    } catch (error) {
+      console.error('Error holding item:', error);
+      Alert.alert('Error', 'Could not hold this item. Please try again.');
+    } finally {
+      setCustodyBusy(false);
+    }
+  };
+
+  const handleHold = () => {
+    if (!myEmail) return;
+    // Grab-with-warning: only when someone ELSE explicitly holds it.
+    if (item?.currentHolder && item.currentHolder !== myEmail) {
+      Alert.alert(
+        'Take custody?',
+        `This item is currently held by ${getHolderName(item.currentHolder, usersList)}. Take it anyway?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Take it', style: 'destructive', onPress: doHold },
+        ]
+      );
+    } else {
+      doHold();
+    }
+  };
+
+  const handleRelease = async () => {
+    try {
+      setCustodyBusy(true);
+      await InventoryService.releaseItem(itemId);
+    } catch (error) {
+      console.error('Error releasing item:', error);
+      Alert.alert('Error', 'Could not release this item. Please try again.');
+    } finally {
+      setCustodyBusy(false);
     }
   };
 
@@ -197,6 +265,58 @@ export default function ItemDetailScreen({ route, navigation }) {
         </AppSection>
       ) : (
         <>
+          <AppSection title="Custody" style={{ marginTop: appSpacing.lg }}>
+            <AppCard variant="elevated" style={{ padding: appSpacing.lg }}>
+              <View style={styles.custodyRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.custodyLabel}>Held by</Text>
+                  <Text style={styles.custodyValue}>
+                    {holderInfo.holder ? getHolderName(holderInfo.holder, usersList) : 'Unassigned'}
+                  </Text>
+                  {holderInfo.source === 'inherited' && (
+                    <View style={styles.inheritedRow}>
+                      <CornerDownRight size={12} color={appColors.textMuted} />
+                      <Text style={styles.inheritedText}>via {holderInfo.from?.name || 'parent folder'}</Text>
+                    </View>
+                  )}
+                </View>
+                {iHoldExplicitly ? (
+                  <AppButton variant="secondary" size="sm" onPress={handleRelease} loading={custodyBusy}>
+                    Release
+                  </AppButton>
+                ) : (
+                  <AppButton
+                    variant="primary"
+                    size="sm"
+                    onPress={handleHold}
+                    loading={custodyBusy}
+                    icon={<UserCheck size={14} color="#09090B" />}
+                  >
+                    Hold this
+                  </AppButton>
+                )}
+              </View>
+              <View style={styles.tagRow}>
+                <Text style={styles.custodyLabel}>QR Tag</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <Text style={styles.tagValue}>{item.activeTagId || 'None'}</Text>
+                  {hasPermission('inventory') && (
+                    <AppButton variant="ghost" size="sm" onPress={() => setReplaceVisible(true)}>
+                      {item.activeTagId ? 'Replace' : 'Attach'}
+                    </AppButton>
+                  )}
+                </View>
+              </View>
+            </AppCard>
+          </AppSection>
+
+          <AttachTagModal
+            visible={replaceVisible}
+            entity={{ type: 'item', id: itemId, name: item.name }}
+            mode={item.activeTagId ? 'replace' : 'attach'}
+            onClose={() => setReplaceVisible(false)}
+          />
+
           <View style={styles.statsGrid}>
             <AppCard variant="elevated" style={styles.statCard}>
               <View style={styles.statIconBox}>
@@ -279,6 +399,45 @@ const styles = StyleSheet.create({
     ...appTypography.sectionTitle,
     fontSize: 26,
     color: appColors.textPrimary,
+  },
+  custodyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  custodyLabel: {
+    ...appTypography.captionBold,
+    color: appColors.textSecondary,
+    marginBottom: 4,
+  },
+  custodyValue: {
+    ...appTypography.bodyBold,
+    fontSize: 18,
+    color: appColors.textPrimary,
+  },
+  inheritedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 4,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: appColors.border,
+  },
+  tagValue: {
+    ...appTypography.bodyBold,
+    color: appColors.textPrimary,
+    fontFamily: 'monospace',
+  },
+  inheritedText: {
+    ...appTypography.caption,
+    color: appColors.textMuted,
   },
   statsGrid: {
     flexDirection: 'row',

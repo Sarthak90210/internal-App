@@ -1,4 +1,4 @@
-import { documentDirectory, writeAsStringAsync } from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { EXPORT_COLUMNS } from './exportColumns';
 import { getInventorySnapshot } from './inventorySnapshotService';
@@ -20,14 +20,17 @@ const itemRow = (item) => EXPORT_COLUMNS.map(col => escapeCell(item[col.key])).j
  * Write `content` to the app document directory and hand it to the share sheet.
  */
 const writeAndShare = async (fileName, content) => {
-  const fileUri = documentDirectory + fileName;
-  await writeAsStringAsync(fileUri, content, { encoding: 'utf8' });
+  // SDK 54 new filesystem API (writeAsStringAsync is deprecated and now throws).
+  const file = new File(Paths.cache, fileName);
+  if (file.exists) file.delete();
+  file.create();
+  file.write(content);
 
   if (!(await Sharing.isAvailableAsync())) {
     throw new Error('Sharing is not available on this device');
   }
 
-  await Sharing.shareAsync(fileUri, {
+  await Sharing.shareAsync(file.uri, {
     mimeType: 'text/csv',
     dialogTitle: 'Export Inventory',
   });

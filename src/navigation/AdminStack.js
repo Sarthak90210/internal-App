@@ -12,6 +12,7 @@ import ManageSponsorsScreen from '../screens/admin/ManageSponsorsScreen';
 import ManageContactMessagesScreen from '../screens/admin/ManageContactMessagesScreen';
 import ManageTeamMembersScreen from '../screens/admin/ManageTeamMembersScreen';
 import ManageSocialsScreen from '../screens/admin/ManageSocialsScreen';
+import ManageTagsScreen from '../screens/admin/ManageTagsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -37,6 +38,7 @@ export default function AdminStack() {
       <Stack.Screen name="ManageContactMessages" component={ManageContactMessagesScreen} options={{ title: 'Manage Messages' }} />
       <Stack.Screen name="ManageTeamMembers" component={ManageTeamMembersScreen} options={{ title: 'Manage Team Members' }} />
       <Stack.Screen name="ManageSocials" component={ManageSocialsScreen} options={{ title: 'Manage Socials' }} />
+      <Stack.Screen name="ManageTags" component={ManageTagsScreen} options={{ title: 'QR Asset Tags' }} />
     </Stack.Navigator>
   );
 }

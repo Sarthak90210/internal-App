@@ -15,6 +15,8 @@ import { InventoryService } from '../../services/inventory';
 import { UsersService } from '../../services/users';
 import MoveDestinationModal from '../../components/MoveDestinationModal';
 import ExportModal from '../../components/ExportModal';
+import InventoryScanButton from '../../components/InventoryScanButton';
+import AttachTagModal from '../../components/AttachTagModal';
 import { 
   AppSearchBar, 
   AppListItem, 
@@ -35,6 +37,7 @@ import {
   resolveStatus,
   toggleInSet,
   toggleSelectAll,
+  buildInventoryPath,
 } from '../../lib/inventoryHelpers';
 
 export default function InventoryDetailScreen({ route, navigation }) {
@@ -55,6 +58,7 @@ export default function InventoryDetailScreen({ route, navigation }) {
   
   const [isMoveModalVisible, setIsMoveModalVisible] = useState(false);
   const [isExportModalVisible, setIsExportModalVisible] = useState(false);
+  const [attachTarget, setAttachTarget] = useState(null);
 
   useEffect(() => {
     navigation.setOptions({ title: listName || 'Inventories' });
@@ -87,10 +91,18 @@ export default function InventoryDetailScreen({ route, navigation }) {
   const handleAddInventory = async () => {
     if (!newInventoryName.trim()) return;
     try {
-      await InventoryService.addInventory(listId, newInventoryName.trim());
+      const createdName = newInventoryName.trim();
+      const ref = await InventoryService.addInventory(listId, createdName);
       setIsAddModalVisible(false);
       setNewInventoryName('');
+      if (ref?.id) {
+        Alert.alert('Attach a QR tag?', `Link a physical QR label to "${createdName}" now?`, [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Scan tag', onPress: () => setAttachTarget({ type: 'inventory', id: ref.id, name: createdName }) },
+        ]);
+      }
     } catch (e) {
+      console.error('Error creating folder:', e);
       Alert.alert('Error', 'Failed to create folder');
     }
   };
@@ -193,13 +205,15 @@ export default function InventoryDetailScreen({ route, navigation }) {
 
           if (item._type === 'folder') {
             icon = <Folder size={18} color="#38BDF8" />;
-            const parentInv = allInvs.find(i => i.id === item.parentInventoryId);
-            subtitle = parentInv ? `Sub-folder • In ${parentInv.name}` : `Folder • In ${listName || 'List'}`;
+            // Full path of the folder's parent (everything above the folder itself).
+            const parentPath = buildInventoryPath(item.parentInventoryId, allInvs, lists);
+            subtitle = `Folder • ${parentPath || listName || 'List'}`;
             onPress = () => navigation.navigate('FolderDetail', { inventoryId: item.id, inventoryName: item.name });
           } else if (item._type === 'item') {
             icon = <Box size={18} color="#A855F7" />;
-            const parentInv = allInvs.find(i => i.id === item.inventoryId);
-            subtitle = `Item • Qty: ${item.quantity || 0}${parentInv ? ` • In ${parentInv.name}` : ''}`;
+            // Full location path: List / Folder / Sub-folder that holds the item.
+            const path = buildInventoryPath(item.inventoryId, allInvs, lists);
+            subtitle = `Qty: ${item.quantity || 0}${path ? ` • ${path}` : ''}`;
             onPress = () => navigation.navigate('ItemDetail', { itemId: item.id, itemData: item });
           } else if (item._type === 'user') {
             icon = <User size={18} color="#10B981" />;
@@ -245,7 +259,7 @@ export default function InventoryDetailScreen({ route, navigation }) {
             >
               Export
             </AppButton>
-            <AppButton 
+            <AppButton
               variant={isSelectionMode ? "primary" : "secondary"}
               size="sm"
               onPress={() => {
@@ -253,9 +267,18 @@ export default function InventoryDetailScreen({ route, navigation }) {
                 else handleSelectAll();
               }}
               icon={isSelectionMode ? <CheckSquare size={14} color="#09090B" /> : <CheckSquare size={14} color={appColors.textPrimary} />}
+              style={{ marginRight: 8 }}
             >
               {isSelectionMode ? (selectedInventories.size === topLevelInventories.length && topLevelInventories.length > 0 ? 'Deselect All' : 'Select All') : 'Select'}
             </AppButton>
+            <InventoryScanButton
+              navigation={navigation}
+              surface="list"
+              containerId={listId}
+              allInvs={allInvs}
+              bindCandidates={topLevelInventories.map((inv) => ({ type: 'inventory', id: inv.id, name: inv.name }))}
+              label="Scan"
+            />
           </View>
 
           {isSelectionMode && (
@@ -326,9 +349,15 @@ export default function InventoryDetailScreen({ route, navigation }) {
         }}
       />
 
-      <ExportModal 
-        visible={isExportModalVisible} 
-        onDismiss={() => setIsExportModalVisible(false)} 
+      <AttachTagModal
+        visible={!!attachTarget}
+        entity={attachTarget}
+        onClose={() => setAttachTarget(null)}
+      />
+
+      <ExportModal
+        visible={isExportModalVisible}
+        onDismiss={() => setIsExportModalVisible(false)}
         listId={listId} 
       />
 

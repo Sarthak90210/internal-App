@@ -2,8 +2,8 @@
   "expo": {
     "name": "RFV",
     "slug": "App",
-    "version": "3.1.0",
-    "runtimeVersion": "3",
+    "version": "4.0.0",
+    "runtimeVersion": "4",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "app",
@@ -14,7 +14,7 @@
     },
     "android": {
       "package": "com.teamrotor.app",
-      "versionCode": 12,
+      "versionCode": 13,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff",
@@ -35,6 +35,13 @@
           "backgroundColor": "#ffffff",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 150
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow RFV to use the camera to scan QR asset tags.",
+          "recordAudioAndroid": false
         }
       ]
     ],

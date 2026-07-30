@@ -12,15 +12,20 @@ import {
   ArrowRightLeft, 
   MoreVertical, 
   Trash2, 
-  UserCheck, 
-  CheckCircle2, 
-  AlertTriangle 
+  UserCheck,
+  CheckCircle2,
+  AlertTriangle,
+  QrCode
 } from '../../lib/lucideIcons';
 import { InventoryService } from '../../services/inventory';
 import { UsersService } from '../../services/users';
 import { useAuthStore } from '../../stores/authStore';
 import MoveDestinationModal from '../../components/MoveDestinationModal';
 import ExportModal from '../../components/ExportModal';
+import InventoryScanButton from '../../components/InventoryScanButton';
+import AttachTagModal from '../../components/AttachTagModal';
+import BulkScanModal from '../../components/BulkScanModal';
+import { resolveEffectiveHolder } from '../../lib/custody';
 import { 
   AppCard, 
   AppSection, 
@@ -47,7 +52,7 @@ import {
 } from '../../lib/inventoryHelpers';
 
 export default function FolderDetailScreen({ route, navigation }) {
-  const { user } = useAuthStore();
+  const { user, hasPermission } = useAuthStore();
   const { inventoryId, inventoryName } = route.params;
   const [items, setItems] = useState([]);
   const [subInventories, setSubInventories] = useState([]);
@@ -74,6 +79,10 @@ export default function FolderDetailScreen({ route, navigation }) {
   const [isMoveModalVisible, setIsMoveModalVisible] = useState(false);
   const [isExportVisible, setIsExportVisible] = useState(false);
   const [isActionsModalVisible, setIsActionsModalVisible] = useState(false);
+  const [custodyBusy, setCustodyBusy] = useState(false);
+  const [attachTarget, setAttachTarget] = useState(null);
+  const [replaceVisible, setReplaceVisible] = useState(false);
+  const [bulkScanVisible, setBulkScanVisible] = useState(false);
 
   useEffect(() => {
     navigation.setOptions({ title: inventoryName || 'Folder' });
@@ -146,9 +155,53 @@ export default function FolderDetailScreen({ route, navigation }) {
 
   const holderNameFor = (email) => getHolderName(email, usersList);
 
+  // Self-custody for the folder. Explicit holder overrides inherited; releasing
+  // reverts to the parent folder's holder (see lib/custody.js).
+  const doHoldFolder = async () => {
+    try {
+      setCustodyBusy(true);
+      await InventoryService.holdInventory(inventoryId, user?.email, user?.roomNumber);
+    } catch (e) {
+      console.error('Error holding folder:', e);
+      Alert.alert('Error', 'Could not hold this folder. Please try again.');
+    } finally {
+      setCustodyBusy(false);
+    }
+  };
+
+  const handleHoldFolder = () => {
+    if (!user?.email) return;
+    if (currentInventory.currentHolder && currentInventory.currentHolder !== user.email) {
+      Alert.alert(
+        'Take custody?',
+        `This folder is currently held by ${holderNameFor(currentInventory.currentHolder)}. Take it anyway?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Take it', style: 'destructive', onPress: doHoldFolder },
+        ]
+      );
+    } else {
+      doHoldFolder();
+    }
+  };
+
+  const handleReleaseFolder = async () => {
+    try {
+      setCustodyBusy(true);
+      await InventoryService.releaseInventory(inventoryId);
+    } catch (e) {
+      console.error('Error releasing folder:', e);
+      Alert.alert('Error', 'Could not release this folder. Please try again.');
+    } finally {
+      setCustodyBusy(false);
+    }
+  };
+
   const renderOverview = () => {
     const status = resolveStatus(currentInventory);
     const badgeVariant = getStatusBadgeVariant(status);
+    const effectiveHolder = resolveEffectiveHolder(currentInventory, 'inventory', allInvs);
+    const iHoldFolder = currentInventory.currentHolder && currentInventory.currentHolder === user?.email;
 
     return (
       <ScrollView contentContainerStyle={{ padding: appSpacing.xl, paddingBottom: 100 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -160,31 +213,77 @@ export default function FolderDetailScreen({ route, navigation }) {
               <AppBadge variant={badgeVariant}>{status}</AppBadge>
             </View>
           </View>
-          <AppButton 
-            variant="secondary" 
-            size="sm" 
-            icon={<MoreVertical size={16} color={appColors.textPrimary} />} 
-            onPress={() => setIsActionsModalVisible(true)}
-          >
-            Actions
-          </AppButton>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <InventoryScanButton
+              navigation={navigation}
+              surface="folder"
+              containerId={inventoryId}
+              allInvs={allInvs}
+              bindCandidates={[
+                ...subInventories.map((s) => ({ type: 'inventory', id: s.id, name: s.name })),
+                ...items.map((it) => ({ type: 'item', id: it.id, name: it.name })),
+              ]}
+              label="Scan"
+            />
+            <AppButton
+              variant="secondary"
+              size="sm"
+              icon={<MoreVertical size={16} color={appColors.textPrimary} />}
+              onPress={() => setIsActionsModalVisible(true)}
+            >
+              Actions
+            </AppButton>
+          </View>
         </View>
         
         <AppSection title="Assignment & Custody" style={{ marginTop: appSpacing.xl }}>
           <AppCard variant="elevated" style={{ padding: appSpacing.lg }}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Current Holder</Text>
-              <Text style={styles.infoValue}>{holderNameFor(currentInventory.currentHolder)}</Text>
+            <View style={styles.custodyHeadRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.infoLabel}>Held by</Text>
+                <Text style={styles.custodyHolder}>
+                  {effectiveHolder.holder ? holderNameFor(effectiveHolder.holder) : 'Unassigned'}
+                </Text>
+                {effectiveHolder.source === 'inherited' && (
+                  <Text style={styles.custodyInherited}>via {effectiveHolder.from?.name || 'parent folder'}</Text>
+                )}
+              </View>
+              {iHoldFolder ? (
+                <AppButton variant="secondary" size="sm" onPress={handleReleaseFolder} loading={custodyBusy}>
+                  Release
+                </AppButton>
+              ) : (
+                <AppButton
+                  variant="primary"
+                  size="sm"
+                  onPress={handleHoldFolder}
+                  loading={custodyBusy}
+                  icon={<UserCheck size={14} color="#09090B" />}
+                >
+                  Hold this
+                </AppButton>
+              )}
             </View>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Room / Location</Text>
               <Text style={styles.infoValue}>{currentInventory.currentRoom || 'Not specified'}</Text>
             </View>
-            <View style={[styles.infoRow, { borderBottomWidth: 0, paddingBottom: 0 }]}>
+            <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Assigned Date</Text>
               <Text style={styles.infoValue}>
                 {currentInventory.currentAssignedDate ? new Date(currentInventory.currentAssignedDate).toLocaleDateString() : 'N/A'}
               </Text>
+            </View>
+            <View style={[styles.infoRow, { borderBottomWidth: 0, paddingBottom: 0 }]}>
+              <Text style={styles.infoLabel}>QR Tag</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text style={styles.tagValueMono}>{currentInventory.activeTagId || 'None'}</Text>
+                {hasPermission('inventory') && (
+                  <AppButton variant="ghost" size="sm" onPress={() => setReplaceVisible(true)}>
+                    {currentInventory.activeTagId ? 'Replace' : 'Attach'}
+                  </AppButton>
+                )}
+              </View>
             </View>
           </AppCard>
         </AppSection>
@@ -497,12 +596,36 @@ export default function FolderDetailScreen({ route, navigation }) {
         </View>
       )}
 
-      <ExportModal 
+      <ExportModal
         visible={isExportVisible}
         onDismiss={() => setIsExportVisible(false)}
         inventoryId={inventoryId}
         listId={currentInventory?.listId}
       />
+
+      <AttachTagModal
+        visible={!!attachTarget}
+        entity={attachTarget}
+        onClose={() => setAttachTarget(null)}
+      />
+
+      <AttachTagModal
+        visible={replaceVisible}
+        entity={{ type: 'inventory', id: inventoryId, name: currentInventory.name }}
+        mode={currentInventory.activeTagId ? 'replace' : 'attach'}
+        onClose={() => setReplaceVisible(false)}
+      />
+
+      {/* Mount only while open — the camera hook hits native on mount. */}
+      {bulkScanVisible && (
+        <BulkScanModal
+          visible
+          onClose={() => setBulkScanVisible(false)}
+          containerId={inventoryId}
+          containerName={currentInventory.name}
+          allInvs={allInvs}
+        />
+      )}
 
       <MoveDestinationModal
         visible={isMoveModalVisible}
@@ -554,19 +677,32 @@ export default function FolderDetailScreen({ route, navigation }) {
               onPress={async () => {
                 if (!newName.trim()) return;
                 try {
+                  const createdName = newName.trim();
+                  let ref;
+                  let entityType;
                   if (activeTab === 'sub') {
-                    await InventoryService.addSubInventory(currentInventory.listId, inventoryId, newName.trim());
+                    ref = await InventoryService.addSubInventory(currentInventory.listId, inventoryId, createdName);
+                    entityType = 'inventory';
                   } else {
-                    await InventoryService.addItem(inventoryId, { name: newName.trim(), quantity: parseInt(newQty || 1, 10), category: newCategory.trim() });
+                    ref = await InventoryService.addItem(inventoryId, { name: createdName, quantity: parseInt(newQty || 1, 10), category: newCategory.trim() });
+                    entityType = 'item';
                   }
                   setIsAddModalVisible(false);
                   setNewName('');
                   setNewQty('1');
                   setNewCategory('');
+                  // Offer to attach a QR tag to the thing we just created (§4).
+                  if (ref?.id) {
+                    Alert.alert('Attach a QR tag?', `Link a physical QR label to "${createdName}" now?`, [
+                      { text: 'Not now', style: 'cancel' },
+                      { text: 'Scan tag', onPress: () => setAttachTarget({ type: entityType, id: ref.id, name: createdName }) },
+                    ]);
+                  }
                 } catch (e) {
+                  console.error('Error creating resource:', e);
                   Alert.alert('Error', 'Could not create the resource. Please try again.');
                 }
-              }} 
+              }}
               disabled={!newName.trim()}
               style={{ flex: 1 }}
             >
@@ -671,9 +807,17 @@ export default function FolderDetailScreen({ route, navigation }) {
           >
             Assign Team Holder
           </AppButton>
-          <AppButton 
-            variant="secondary" 
-            icon={<CheckCircle2 size={18} color="#10B981" />} 
+          <AppButton
+            variant="secondary"
+            icon={<QrCode size={18} color={appColors.accent} />}
+            onPress={() => { setIsActionsModalVisible(false); setBulkScanVisible(true); }}
+            style={{ justifyContent: 'flex-start' }}
+          >
+            Bulk scan into this folder
+          </AppButton>
+          <AppButton
+            variant="secondary"
+            icon={<CheckCircle2 size={18} color="#10B981" />}
             onPress={() => { setIsActionsModalVisible(false); InventoryService.updateInventoryStatus(inventoryId, 'Available'); }}
             style={{ justifyContent: 'flex-start' }}
           >
@@ -768,6 +912,31 @@ const styles = StyleSheet.create({
     ...appTypography.captionBold,
     color: appColors.textSecondary,
     marginRight: 6,
+  },
+  custodyHeadRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 12,
+    marginBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: appColors.border,
+  },
+  custodyHolder: {
+    ...appTypography.bodyBold,
+    fontSize: 18,
+    color: appColors.textPrimary,
+    marginTop: 2,
+  },
+  custodyInherited: {
+    ...appTypography.caption,
+    color: appColors.textMuted,
+    marginTop: 2,
+  },
+  tagValueMono: {
+    ...appTypography.bodyBold,
+    color: appColors.textPrimary,
+    fontFamily: 'monospace',
   },
   infoRow: {
     flexDirection: 'row',
